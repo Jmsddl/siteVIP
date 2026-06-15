@@ -863,6 +863,15 @@ body.modal-open {
   gap: 16px;
 }
 
+.comment-empty {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  text-align: center;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.03);
+}
+
 .comment-item {
   background: var(--surface);
   border: 1px solid var(--border);
