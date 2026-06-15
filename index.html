@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Entrar</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-box">
+      <h2>Area Exclusiva</h2>
+      <input type="text" id="username" placeholder="Usuario" autocomplete="off" />
+      <input type="password" id="password" placeholder="Senha" />
+      <button class="btn-primary" onclick="doLogin()">Entrar</button>
+      <p class="error-msg" id="error-msg">Usuario ou senha incorretos.</p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
+  <script src="auth.js"></script>
+</body>
+</html>

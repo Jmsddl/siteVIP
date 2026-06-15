@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Home</title>
+
+  <link rel="stylesheet" href="style.css"/>
+
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
+    rel="stylesheet"
+  >
+</head>
+<body>
+
+  <!-- NAVBAR -->
+
+  <nav class="navbar">
+    <span class="navbar-brand">✨ Meu Espaço</span>
+    <button class="btn-logout" onclick="doLogout()">
+      Sair
+    </button>
+  </nav>
+
+  <!-- PERFIL -->
+
+  <section class="profile-section">
+    <img
+      class="profile-avatar"
+      src="sua-foto.jpg"
+      alt="Foto de perfil"
+    />
+
+
+<h2 class="profile-name">
+  AMANDA OLIVEIRA
+</h2>
+
+<p class="profile-bio">
+  <strong>🔞 Bem-vindo ao meu paraíso proibido - 21 anos de pura delícia!</strong>
+<br><br>
+Se você chegou até aqui, é porque merece acessar o que mais tenho de melhor. Conteúdos que só meus segredos mais especiais podem ver.
+
+Aqui eu sou completamente sua:
+• Galerias íntimas onde cada detalhe fica à mostra
+• Vídeos exclusivos com meus brinquedos favoritos e sexo explícito.
+• Minhas fantasias mais secretas realizadas apenas para você
+• Conteúdo novo toda semana para nunca te deixar entediado
+  <br><br>
+ 
+</p>
+<div class="profile-stats">
+
+  <div class="stat">
+    <span class="stat-number" id="count-videos">
+      0
+    </span>
+    <span class="stat-label">
+      Vídeos
+    </span>
+  </div>
+
+  <div class="stat">
+    <span class="stat-number" id="count-fotos">
+      0
+    </span>
+    <span class="stat-label">
+      Fotos
+    </span>
+  </div>
+
+  <div class="stat">
+    <span class="stat-number" id="count-comments">
+      0
+    </span>
+    <span class="stat-label">
+      Comentários
+    </span>
+  </div>
+
+</div>
+
+
+  </section>
+
+  <!-- TABS -->
+
+  <div class="tabs">
+    <button
+      class="tab active"
+      onclick="switchTab('videos', this)"
+    >
+      🎬 Vídeos
+    </button>
+
+
+<button
+  class="tab"
+  onclick="switchTab('fotos', this)"
+>
+  📸 Fotos
+</button>
+
+<button
+  class="tab"
+  onclick="switchTab('comentarios', this)"
+>
+  💬 Comentários
+</button>
+
+
+  </div>
+
+  <!-- GRID VÍDEOS -->
+
+  <section class="content-section" id="tab-videos">
+    <div
+      class="content-grid"
+      id="videos-grid"
+    >
+      <!-- preenchido pelo JS -->
+    </div>
+  </section>
+
+  <!-- GRID FOTOS -->
+
+  <section
+    class="content-section"
+    id="tab-fotos"
+    style="display:none"
+  >
+    <div
+      class="content-grid"
+      id="fotos-grid"
+    >
+      <!-- preenchido pelo JS -->
+    </div>
+  </section>
+
+  <!-- COMENTÁRIOS -->
+
+  <section
+    class="comments-section"
+    id="tab-comentarios"
+    style="display:none"
+  >
+    <h2>💬 Comentários</h2>
+
+
+<div class="comment-form">
+  <textarea
+    id="comment-text"
+    placeholder="Deixe seu comentário..."
+  ></textarea>
+
+  <button
+    class="btn-primary"
+    onclick="postComment()"
+  >
+    Comentar
+  </button>
+</div>
+
+<div
+  class="comment-list"
+  id="comment-list"
+>
+  <!-- preenchido pelo JS -->
+</div>
+
+
+  </section>
+
+  <!-- MODAL VÍDEO -->
+
+  <div
+    class="modal-overlay"
+    id="video-modal"
+    onclick="closeModal(event)"
+  >
+    <button
+      class="btn-close-floating"
+      type="button"
+      aria-label="Fechar player"
+      onclick="closeVideoModal()"
+    >
+      ×
+    </button>
+    <div class="modal-box">
+
+
+  <!-- iframe entra aqui -->
+  <div id="modal-video"></div>
+
+  <div class="modal-footer">
+    <span
+      class="modal-title"
+      id="modal-title"
+    ></span>
+
+    <button
+      class="btn-close"
+      onclick="closeVideoModal()"
+    >
+      ✕ Fechar
+    </button>
+  </div>
+</div>
+
+
+  </div>
+
+  <!-- PAINEL FLUTUANTE DE OFERTAS -->
+
+  <aside
+    class="floating-offer-panel"
+    id="floating-offer-panel"
+    hidden
+  >
+    <div class="floating-offer-header" id="floating-offer-drag-handle">
+      <div>
+        <span class="floating-offer-kicker">Atendimento</span>
+        <h2>Valores e VIP</h2>
+      </div>
+      <button
+        class="floating-offer-close"
+        id="floating-offer-close"
+        type="button"
+        aria-label="Fechar valores"
+      >
+        x
+      </button>
+    </div>
+
+    <div class="floating-offer-list" id="floating-offer-list"></div>
+
+    <a
+      class="floating-offer-telegram"
+      id="floating-offer-telegram"
+      href="#"
+      target="_blank"
+      rel="noopener"
+      hidden
+    >
+      Chamar no WhatsApp
+    </a>
+  </aside>
+
+  <button
+    class="floating-offer-reopen"
+    id="floating-offer-reopen"
+    type="button"
+    hidden
+  >
+    Ver valores
+  </button>
+
+  <!-- SUPABASE -->
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <script src="supabase-config.js"></script>
+
+  <script src="auth.js"></script>
+
+  <script src="app.js"></script>
+
+</body>
+</html>

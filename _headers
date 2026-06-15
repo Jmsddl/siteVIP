@@ -1,0 +1,5 @@
+/drive-video/*
+  Access-Control-Allow-Origin: *
+  Cross-Origin-Resource-Policy: cross-origin
+  Accept-Ranges: bytes
+  Cache-Control: public, max-age=3600

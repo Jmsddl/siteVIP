@@ -1,0 +1,9 @@
+[[edge_functions]]
+  function = "drive-video"
+  path = "/drive-video/*"
+
+[[redirects]]
+  from = "/drive-video/:id"
+  to = "https://drive.usercontent.google.com/download?id=:id&export=download&confirm=t"
+  status = 200
+  force = true

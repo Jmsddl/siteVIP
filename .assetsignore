@@ -1,0 +1,10 @@
+functions/
+netlify/
+netlify.toml
+_headers
+_redirects
+SUPABASE-TABELAS-MODO-TESTE.sql
+COMO-USAR-CLOUDFLARE-R2.txt
+wrangler.toml
+.git/
+.github/

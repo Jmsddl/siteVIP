@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Player</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="standalone-player-page">
+  <main class="standalone-player-shell">
+    <section class="standalone-player-stage" id="player-stage">
+      <video
+        id="standalone-video"
+        class="standalone-player-video"
+        playsinline
+        webkit-playsinline="true"
+        preload="metadata"
+        disablepictureinpicture
+      ></video>
+
+      <iframe
+        id="standalone-embed"
+        class="standalone-player-embed"
+        allow="autoplay; fullscreen; picture-in-picture"
+        allowfullscreen
+        referrerpolicy="strict-origin-when-cross-origin"
+        frameborder="0"
+        hidden
+      ></iframe>
+
+      <div class="standalone-player-loading" id="player-loading">
+        Carregando video...
+      </div>
+
+      <div class="standalone-player-error" id="player-error" hidden>
+        <p class="standalone-player-error-text" id="player-error-text">
+          Nao foi possivel abrir o video.
+        </p>
+        <div class="standalone-player-error-actions">
+          <button class="standalone-player-back" type="button" onclick="goBackToHome()">
+            Voltar
+          </button>
+          <button class="standalone-player-secondary" type="button" id="fallback-button">
+            Abrir no Drive
+          </button>
+        </div>
+      </div>
+
+      <div class="standalone-player-lock" id="player-lock" hidden>
+        <div class="vip-lock-card">
+          <span class="vip-lock-kicker">Acesso VIP</span>
+          <h3>Conteudo bloqueado</h3>
+          <p id="player-lock-text">
+            Entre em contato para assinar o VIP e continuar assistindo.
+          </p>
+          <a
+            class="vip-lock-button"
+            id="player-lock-telegram"
+            href="#"
+            target="_blank"
+            rel="noopener"
+            hidden
+          >
+            Chamar no WhatsApp
+          </a>
+          <button class="standalone-player-back" type="button" onclick="goBackToHome()">
+            Voltar
+          </button>
+        </div>
+      </div>
+
+      <div class="standalone-player-ui" id="player-ui">
+        <div class="standalone-player-topbar">
+          <button class="standalone-player-back" type="button" onclick="goBackToHome()">
+            Voltar
+          </button>
+          <div class="standalone-player-title" id="player-title"></div>
+        </div>
+
+        <button class="standalone-player-center" id="center-toggle" type="button">
+          Play
+        </button>
+
+        <div class="standalone-player-bottom">
+          <div class="standalone-player-time" id="player-time">0:00 / 0:00</div>
+          <input
+            id="player-progress"
+            class="standalone-player-progress"
+            type="range"
+            min="0"
+            max="1000"
+            step="1"
+            value="0"
+          />
+          <div class="standalone-player-controls">
+            <button class="standalone-player-control" id="play-toggle" type="button">
+              Play
+            </button>
+            <button class="standalone-player-control" id="mute-toggle" type="button">
+              Som
+            </button>
+            <select
+              class="standalone-player-quality"
+              id="quality-select"
+              aria-label="Resolucao"
+              hidden
+            ></select>
+            <button class="standalone-player-control" id="fullscreen-toggle" type="button">
+              Tela cheia
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="player.js"></script>
+</body>
+</html>

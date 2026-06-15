@@ -1,0 +1,43 @@
+COMO USAR CLOUDFLARE R2 NO SITE
+
+1. No R2, deixe o bucket publico ou use um dominio publico.
+
+2. O link que vai no Supabase deve ser o link publico do arquivo, por exemplo:
+   https://pub-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.r2.dev/video.mp4
+
+   Nao use o link do painel da Cloudflare, tipo:
+   https://dash.cloudflare.com/.../r2/.../details
+
+3. Na tabela conteudo:
+   tipo: video
+   stream_url: link publico .mp4 do R2
+   thumb_url: opcional
+
+4. Se thumb_url ficar vazio, o site tenta mostrar uma previa usando o proprio video.
+   Para ficar mais bonito e economizar carregamento, o ideal depois e subir uma imagem .jpg/.webp no R2 e colocar em thumb_url.
+
+5. Para fotos:
+   tipo: foto
+   stream_url: link publico .jpg/.png/.webp do R2
+   thumb_url: opcional
+
+OBS:
+- Links do R2 rodam direto no player do site. Nao precisa do proxy /drive-video.
+- A pasta functions/drive-video ficou apenas como compatibilidade para links antigos do Google Drive.
+- Se um video do R2 nao tocar, confira se o arquivo esta publico e se a URL abre direto no navegador.
+
+DEPLOY NO CLOUDFLARE
+
+Se voce estiver usando Workers, como no print:
+- Build command: deixe vazio
+- Deploy command: npx wrangler deploy
+- Root directory: /
+
+O arquivo wrangler.toml ja aponta os arquivos estaticos para a raiz do projeto.
+A lista .assetsignore impede que arquivos internos, SQL e configs antigas sejam publicados como arquivos publicos do site.
+
+Se voce preferir Cloudflare Pages:
+- Workers & Pages > Create > Pages > Connect to Git
+- Framework preset: None
+- Build command: vazio
+- Build output directory: .
