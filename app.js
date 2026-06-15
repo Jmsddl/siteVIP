@@ -1233,36 +1233,91 @@ function closeModal(event) {
 }
 
 async function loadComments() {
-  const { data, error } = await _supa
-    .from('comentarios')
-    .select('*')
-    .order('created_at', { ascending: false });
+  const { data, error } = await loadCommentsFromSupabase();
+  const list = document.getElementById('comment-list');
+  const counter = document.getElementById('count-comments');
 
-  if (error) {
-    console.error(error);
+  if (!list || !counter) {
     return;
   }
 
-  const list = document.getElementById('comment-list');
-  document.getElementById('count-comments').textContent = data.length;
-  list.innerHTML = '';
-
-  data.forEach((comment) => {
-    list.innerHTML += `
-      <div class="comment-item" style="display: flex; margin-bottom: 10px;">
-        <div class="comment-avatar">
-          ${(comment.username?.[0] || '?').toUpperCase()}
-        </div>
-        <div class="comment-body">
-          <div class="comment-user">
-            ${comment.username || 'Anonimo'}
-          </div>
-          <div class="comment-text">
-            ${comment.texto}
-          </div>
-        </div>
+  if (error) {
+    console.error('Erro ao carregar comentarios:', error);
+    counter.textContent = '0';
+    list.innerHTML = `
+      <div class="comment-empty">
+        Nao consegui carregar os comentarios agora.
       </div>
     `;
+    return;
+  }
+
+  const comments = data || [];
+  counter.textContent = String(comments.length);
+  list.innerHTML = '';
+
+  if (!comments.length) {
+    list.innerHTML = `
+      <div class="comment-empty">
+        Ainda nao tem comentarios. Seja o primeiro a comentar.
+      </div>
+    `;
+    return;
+  }
+
+  comments.forEach((comment) => {
+    const item = document.createElement('div');
+    item.className = 'comment-item';
+    const username = comment.username || 'Anonimo';
+    const dateHtml = comment.created_at
+      ? `<div class="comment-date">${escapeHtml(formatCommentDate(comment.created_at))}</div>`
+      : '';
+
+    item.innerHTML = `
+      <div class="comment-avatar">
+        ${escapeHtml(username[0] || '?').toUpperCase()}
+      </div>
+      <div class="comment-body">
+        <div class="comment-user">
+          ${escapeHtml(username)}
+        </div>
+        <div class="comment-text">
+          ${escapeHtml(comment.texto || '')}
+        </div>
+        ${dateHtml}
+      </div>
+    `;
+
+    list.appendChild(item);
+  });
+}
+
+async function loadCommentsFromSupabase() {
+  const response = await _supa
+    .from('comentarios')
+    .select('username, texto, created_at')
+    .order('created_at', { ascending: false });
+
+  if (!response.error) {
+    return response;
+  }
+
+  return _supa
+    .from('comentarios')
+    .select('username, texto');
+}
+
+function formatCommentDate(value) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return date.toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
   });
 }
 
@@ -1282,13 +1337,29 @@ async function postComment() {
     });
 
   if (error) {
-    console.error(error);
+    console.error('Erro ao enviar comentario:', error);
+    alert('Nao consegui enviar o comentario agora.');
     return;
   }
 
   document.getElementById('comment-text').value = '';
   loadComments();
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+  const commentText = document.getElementById('comment-text');
+
+  if (!commentText) {
+    return;
+  }
+
+  commentText.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      postComment();
+    }
+  });
+});
 
 syncModalViewportHeight();
 window.addEventListener('resize', syncModalViewportHeight);
