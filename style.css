@@ -974,6 +974,41 @@ body.modal-open {
   font-size: 1.05rem;
 }
 
+.floating-offer-close-hint {
+  position: absolute;
+  top: 12px;
+  right: 54px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 92px);
+  padding: 9px 11px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #111;
+  font-size: 0.76rem;
+  font-weight: 900;
+  line-height: 1.15;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.42);
+  opacity: 0;
+  transform: translateX(-10px) scale(0.96);
+  pointer-events: none;
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+
+.floating-offer-close-hint.is-visible {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+}
+
+.floating-offer-close-hint b {
+  color: var(--accent);
+  font-size: 1.1rem;
+  line-height: 1;
+  animation: closeHintArrow 0.72s ease-in-out infinite;
+}
+
 .floating-offer-close {
   width: 32px;
   height: 32px;
@@ -1067,4 +1102,15 @@ body.modal-open {
   font-weight: 800;
   cursor: pointer;
   box-shadow: 0 14px 42px rgba(0, 0, 0, 0.36);
+}
+
+@keyframes closeHintArrow {
+  0%,
+  100% {
+    transform: translateX(-3px);
+  }
+
+  50% {
+    transform: translateX(5px);
+  }
 }
