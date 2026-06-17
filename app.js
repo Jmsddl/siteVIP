@@ -1,157 +1,100 @@
+const DEMO_USERNAMES = ['teste', '123'];
+const DEMO_PLAN = 'teste';
+const DEMO_PREVIEW_MAX_SECONDS = 5;
+const DEFAULT_VIP_CONFIG = {
+  contato_nome: 'Amanda',
+  telegram_url: '',
+  whatsapp_url: '',
+  botao_contato_texto: 'Chamar no WhatsApp',
+  mensagem_video: 'Entre em contato com {contato} para assinar o VIP e continuar assistindo.',
+  mensagem_foto: 'Para ver todas as fotos sem censura, assine o VIP com {contato}.',
+  preview_segundos: DEMO_PREVIEW_MAX_SECONDS
+};
+const DEFAULT_VIP_OFFERS = [
+  {
+    titulo: 'CHAMADA ATE GOZAR',
+    descricao: 'MAXIMO 10mn',
+    valor: 'R$ 30,00',
+    destaque: true
+  },
+  {
+    titulo: 'CHAMADA 5 MINUTOS',
+    descricao: '',
+    valor: 'R$ 20,00',
+    destaque: false
+  },
+  {
+    titulo: '1 DIA DE ACESSO',
+    descricao: '',
+    valor: 'R$ 10,00',
+    destaque: false
+  },
+  {
+    titulo: 'SEMANAL 7 DIAS + VIP',
+    descricao: '',
+    valor: 'R$ 15,00',
+    destaque: true
+  },
+  {
+    titulo: 'MENSAL 30 DIAS + PREMIUM',
+    descricao: '',
+    valor: 'R$ 20,00',
+    destaque: true
+  },
+  {
+    titulo: '3 MESES DE ACESSO',
+    descricao: '',
+    valor: 'R$ 50,00',
+    destaque: false
+  },
+  {
+    titulo: 'MANDA UM MIMO',
+    descricao: 'Em troca de uma foto minha',
+    valor: 'R$ 5,00',
+    destaque: false
+  },
+  {
+    titulo: 'MANDA UM MIMO',
+    descricao: 'Em troca de um video meu',
+    valor: 'R$ 10,00',
+    destaque: false
+  }
+];
+const DRIVE_FILE_ID_PATTERN = /^[A-Za-z0-9_-]{10,}$/;
+const DIRECT_VIDEO_EXTENSION_PATTERN = /\.(mp4|webm|ogg|m4v|mov)(\?|#|$)/i;
 
-  openContentModal(titulo);
+let vipConfig = { ...DEFAULT_VIP_CONFIG };
+let floatingOfferInitialized = false;
+let floatingOfferManuallyClosed = false;
+let floatingOfferHintTimer = null;
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[char]));
 }
 
-async function closeVideoModal() {
-  document.getElementById('modal-video').innerHTML = '';
-  const modal = document.getElementById('video-modal');
-  modal.classList.remove('open', 'mobile-player-mode');
-  document.body.classList.remove('modal-open');
-  const modalBox = document.querySelector('#video-modal .modal-box');
-  if (modalBox) {
-    modalBox.classList.remove('video-fullscreen-box');
-  }
-  await exitElementFullscreen();
-  showFloatingOfferPanel();
+function encodeImageFallbacks(urls) {
+  return encodeURIComponent(JSON.stringify(urls.filter(Boolean)));
 }
 
-function closeModal(event) {
-  if (event.target.id === 'video-modal') {
-    closeVideoModal();
-  }
-}
+function loadNextImageSource(img) {
+  try {
+    const fallbacks = JSON.parse(decodeURIComponent(img.dataset.fallbacks || '[]'));
+    const nextUrl = fallbacks.shift();
 
-async function loadComments() {
-  const { data, error } = await loadCommentsFromSupabase();
-  const list = document.getElementById('comment-list');
-  const counter = document.getElementById('count-comments');
-
-  if (!list || !counter) {
-    return;
-  }
-
-  if (error) {
-    console.error('Erro ao carregar comentarios:', error);
-    counter.textContent = '0';
-    list.innerHTML = `
-      <div class="comment-empty">
-        Nao consegui carregar os comentarios agora.
-      </div>
-    `;
-    return;
-  }
-
-  const comments = data || [];
-  counter.textContent = String(comments.length);
-  list.innerHTML = '';
-
-  if (!comments.length) {
-    list.innerHTML = `
-      <div class="comment-empty">
-        Ainda nao tem comentarios. Seja o primeiro a comentar.
-      </div>
-    `;
-    return;
-  }
-
-  comments.forEach((comment) => {
-    const item = document.createElement('div');
-    item.className = 'comment-item';
-    const username = comment.username || 'Anonimo';
-    const dateHtml = comment.created_at
-      ? `<div class="comment-date">${escapeHtml(formatCommentDate(comment.created_at))}</div>`
-      : '';
-
-    item.innerHTML = `
-      <div class="comment-avatar">
-        ${escapeHtml(username[0] || '?').toUpperCase()}
-      </div>
-      <div class="comment-body">
-        <div class="comment-user">
-          ${escapeHtml(username)}
-        </div>
-        <div class="comment-text">
-          ${escapeHtml(comment.texto || '')}
-        </div>
-        ${dateHtml}
-      </div>
-    `;
-
-    list.appendChild(item);
-  });
-}
-
-async function loadCommentsFromSupabase() {
-  const response = await _supa
-    .from('comentarios')
-    .select('username, texto, created_at')
-    .order('created_at', { ascending: false });
-
-  if (!response.error) {
-    return response;
-  }
-
-  return _supa
-    .from('comentarios')
-    .select('username, texto');
-}
-
-function formatCommentDate(value) {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return '';
-  }
-
-  return date.toLocaleDateString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric'
-  });
-}
-
-async function postComment() {
-  const user = JSON.parse(sessionStorage.getItem('user')) || { username: 'Anonimo' };
-  const texto = document.getElementById('comment-text').value.trim();
-
-  if (!texto) {
-    return;
-  }
-
-  const { error } = await _supa
-    .from('comentarios')
-    .insert({
-      username: user.username,
-      texto
-    });
-
-  if (error) {
-    console.error('Erro ao enviar comentario:', error);
-    alert('Nao consegui enviar o comentario agora.');
-    return;
-  }
-
-  document.getElementById('comment-text').value = '';
-  loadComments();
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  const commentText = document.getElementById('comment-text');
-
-  if (!commentText) {
-    return;
-  }
-
-  commentText.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      postComment();
+    if (nextUrl) {
+      img.dataset.fallbacks = encodeImageFallbacks(fallbacks);
+      img.src = nextUrl;
+      return;
     }
-  });
-});
+  } catch (error) {
+    console.warn('Nao foi possivel carregar fallback da imagem:', error);
+  }
 
-syncModalViewportHeight();
-window.addEventListener('resize', syncModalViewportHeight);
-window.addEventListener('orientationchange', syncModalViewportHeight);
-document.addEventListener('fullscreenchange', syncModalViewportHeight);
-loadContent();
+  const card = img.closest('.preview-photo-card, .card');
+
