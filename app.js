@@ -65,6 +65,7 @@ const DIRECT_VIDEO_EXTENSION_PATTERN = /\.(mp4|webm|ogg|m4v|mov)(\?|#|$)/i;
 let vipConfig = { ...DEFAULT_VIP_CONFIG };
 let floatingOfferInitialized = false;
 let floatingOfferManuallyClosed = false;
+let floatingOfferHintTimer = null;
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -208,8 +209,34 @@ function getFloatingOfferElements() {
     list: document.getElementById('floating-offer-list'),
     telegram: document.getElementById('floating-offer-telegram'),
     close: document.getElementById('floating-offer-close'),
+    closeHint: document.getElementById('floating-offer-close-hint'),
     reopen: document.getElementById('floating-offer-reopen')
   };
+}
+
+function hideFloatingOfferHint() {
+  const { closeHint } = getFloatingOfferElements();
+
+  if (floatingOfferHintTimer) {
+    window.clearTimeout(floatingOfferHintTimer);
+    floatingOfferHintTimer = null;
+  }
+
+  if (closeHint) {
+    closeHint.classList.remove('is-visible');
+  }
+}
+
+function showFloatingOfferHint() {
+  const { panel, closeHint } = getFloatingOfferElements();
+
+  if (!panel || !closeHint || panel.hidden) {
+    return;
+  }
+
+  hideFloatingOfferHint();
+  closeHint.classList.add('is-visible');
+  floatingOfferHintTimer = window.setTimeout(hideFloatingOfferHint, 7500);
 }
 
 function clampFloatingOfferPanel(panel) {
@@ -282,6 +309,7 @@ function setupFloatingOfferDrag() {
       return;
     }
 
+    hideFloatingOfferHint();
     dragging = true;
     startX = event.clientX;
     startY = event.clientY;
@@ -335,6 +363,8 @@ function setupFloatingOfferDrag() {
 function hideFloatingOfferPanel() {
   const { panel } = getFloatingOfferElements();
 
+  hideFloatingOfferHint();
+
   if (panel) {
     panel.hidden = true;
   }
@@ -352,11 +382,14 @@ function showFloatingOfferPanel(force = false) {
     reopen.hidden = !floatingOfferManuallyClosed;
   }
 
-  window.requestAnimationFrame(() => clampFloatingOfferPanel(panel));
+  window.requestAnimationFrame(() => {
+    clampFloatingOfferPanel(panel);
+    showFloatingOfferHint();
+  });
 }
 
 function renderFloatingOfferPanel(offers) {
-  const { panel, list, telegram, close, reopen } = getFloatingOfferElements();
+  const { panel, list, telegram, close, closeHint, reopen } = getFloatingOfferElements();
 
   if (!panel || !list) {
     return;
@@ -394,6 +427,7 @@ function renderFloatingOfferPanel(offers) {
   if (close && reopen && !floatingOfferInitialized) {
     close.addEventListener('click', () => {
       floatingOfferManuallyClosed = true;
+      hideFloatingOfferHint();
       hideFloatingOfferPanel();
       reopen.hidden = false;
     });
@@ -403,6 +437,18 @@ function renderFloatingOfferPanel(offers) {
       reopen.hidden = true;
       showFloatingOfferPanel(true);
     });
+
+    panel.addEventListener('pointerdown', (event) => {
+      if (!closeHint || event.target === closeHint || closeHint.contains(event.target)) {
+        return;
+      }
+
+      hideFloatingOfferHint();
+    });
+
+    if (telegram) {
+      telegram.addEventListener('click', hideFloatingOfferHint);
+    }
   }
 
   setupFloatingOfferDrag();
