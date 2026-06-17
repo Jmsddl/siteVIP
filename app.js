@@ -309,7 +309,6 @@ function setupFloatingOfferDrag() {
       return;
     }
 
-    hideFloatingOfferHint();
     dragging = true;
     startX = event.clientX;
     startY = event.clientY;
@@ -438,17 +437,6 @@ function renderFloatingOfferPanel(offers) {
       showFloatingOfferPanel(true);
     });
 
-    panel.addEventListener('pointerdown', (event) => {
-      if (!closeHint || event.target === closeHint || closeHint.contains(event.target)) {
-        return;
-      }
-
-      hideFloatingOfferHint();
-    });
-
-    if (telegram) {
-      telegram.addEventListener('click', hideFloatingOfferHint);
-    }
   }
 
   setupFloatingOfferDrag();
