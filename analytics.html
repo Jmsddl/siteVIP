@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Analise de acessos</title>
+  <link rel="stylesheet" href="style.css?v=20260617-analytics" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body class="analytics-page">
+  <nav class="navbar analytics-navbar">
+    <span class="navbar-brand">Analise</span>
+    <div class="analytics-nav-actions">
+      <button class="btn-secondary" type="button" onclick="window.location.href='home.html'">
+        Voltar
+      </button>
+      <button class="btn-logout" type="button" onclick="doLogout()">
+        Sair
+      </button>
+    </div>
+  </nav>
+
+  <main class="analytics-shell">
+    <section class="analytics-hero">
+      <div>
+        <span class="analytics-kicker">Acessos em tempo quase real</span>
+        <h1>Analise de usuarios</h1>
+        <p>
+          Veja quem entrou, qual plano usou, o IP/sessao e os cliques principais dentro do site.
+        </p>
+      </div>
+      <div class="analytics-actions">
+        <select id="analytics-filter" aria-label="Filtrar plano">
+          <option value="all">Todos os planos</option>
+          <option value="teste">Somente teste</option>
+          <option value="vip">Somente VIP</option>
+        </select>
+        <button class="btn-secondary" id="analytics-refresh" type="button">
+          Atualizar
+        </button>
+        <button class="btn-primary analytics-export" id="analytics-export" type="button">
+          Exportar CSV
+        </button>
+      </div>
+    </section>
+
+    <p class="analytics-status" id="analytics-status">
+      Carregando analise...
+    </p>
+
+    <section class="analytics-grid" id="analytics-stats">
+      <article class="analytics-card">
+        <span>Total de eventos</span>
+        <strong id="stat-total">0</strong>
+      </article>
+      <article class="analytics-card">
+        <span>Acessos teste</span>
+        <strong id="stat-test-access">0</strong>
+      </article>
+      <article class="analytics-card">
+        <span>Sessoes teste</span>
+        <strong id="stat-test-sessions">0</strong>
+      </article>
+      <article class="analytics-card">
+        <span>Cliques em video</span>
+        <strong id="stat-videos">0</strong>
+      </article>
+      <article class="analytics-card">
+        <span>Cliques em fotos</span>
+        <strong id="stat-photos">0</strong>
+      </article>
+      <article class="analytics-card">
+        <span>Fechou janelinha</span>
+        <strong id="stat-offer-close">0</strong>
+      </article>
+      <article class="analytics-card">
+        <span>Abriu comentarios</span>
+        <strong id="stat-comments-tab">0</strong>
+      </article>
+    </section>
+
+    <section class="analytics-panel">
+      <div class="analytics-panel-header">
+        <h2>Jornada por visitante</h2>
+        <span>agrupado por IP e sessao</span>
+      </div>
+      <div class="analytics-journeys" id="analytics-journeys"></div>
+    </section>
+
+    <section class="analytics-panel">
+      <div class="analytics-panel-header">
+        <h2>Ultimos eventos</h2>
+        <span>limite de 1000 registros</span>
+      </div>
+      <div class="analytics-table-wrap">
+        <table class="analytics-table">
+          <thead>
+            <tr>
+              <th>Horario</th>
+              <th>Usuario</th>
+              <th>Plano</th>
+              <th>IP</th>
+              <th>Evento</th>
+              <th>Alvo</th>
+            </tr>
+          </thead>
+          <tbody id="analytics-events"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="analytics-denied" id="analytics-denied" hidden>
+      <h2>Acesso restrito</h2>
+      <p>Entre com um usuario de plano admin para ver esta pagina.</p>
+      <button class="btn-primary" type="button" onclick="window.location.href='home.html'">
+        Voltar
+      </button>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js?v=20260617-analytics"></script>
+  <script src="auth.js?v=20260617-analytics"></script>
+  <script src="analytics.js?v=20260617-analytics"></script>
+</body>
+</html>
