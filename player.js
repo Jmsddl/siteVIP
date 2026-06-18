@@ -193,12 +193,27 @@ function buildQualityOptions(url) {
 }
 
 function goBackToHome() {
-  if (window.history.length > 1) {
-    window.history.back();
-    return;
+  window.__allowPlayerLeave = true;
+
+  try {
+    const referrerUrl = new URL(document.referrer);
+    const cameFromHome = referrerUrl.origin === window.location.origin &&
+      referrerUrl.pathname.endsWith('/home.html');
+
+    if (cameFromHome && window.history.length > 2) {
+      window.history.go(-2);
+      window.setTimeout(() => {
+        if (window.location.pathname.endsWith('/player.html')) {
+          window.location.replace('home.html');
+        }
+      }, 600);
+      return;
+    }
+  } catch (error) {
+    // Sem referrer confiavel, volta pela rota direta.
   }
 
-  window.location.href = 'home.html';
+  window.location.replace('home.html');
 }
 
 function formatTime(totalSeconds) {
@@ -315,6 +330,7 @@ function requestStageFullscreen(stage) {
   let correctingDemoSeek = false;
   let demoLocked = false;
   let playHintDismissed = false;
+  let backHintTimer = null;
 
   title.textContent = titleText;
   lockText.textContent = vipMessage;
@@ -453,6 +469,47 @@ function requestStageFullscreen(stage) {
     }
 
     return '<span class="player-button-icon" aria-hidden="true">II</span><span>Pausar</span>';
+  }
+
+  function blockBrowserBackButton() {
+    try {
+      window.__allowPlayerLeave = false;
+      window.history.pushState({ playerOpen: true }, '', window.location.href);
+    } catch (error) {
+      return;
+    }
+
+    window.addEventListener('popstate', () => {
+      if (window.__allowPlayerLeave) {
+        return;
+      }
+
+      window.history.pushState({ playerOpen: true }, '', window.location.href);
+      showUi();
+      showBackHint();
+    });
+  }
+
+  function showBackHint() {
+    let hint = document.getElementById('player-back-hint');
+
+    if (!hint) {
+      hint = document.createElement('div');
+      hint.id = 'player-back-hint';
+      hint.className = 'standalone-player-back-hint';
+      hint.textContent = 'Use o botao Fechar para sair do video';
+      stage.appendChild(hint);
+    }
+
+    hint.hidden = false;
+
+    if (backHintTimer) {
+      window.clearTimeout(backHintTimer);
+    }
+
+    backHintTimer = window.setTimeout(() => {
+      hint.hidden = true;
+    }, 2400);
   }
 
   function syncPlayHint() {
@@ -810,6 +867,7 @@ function requestStageFullscreen(stage) {
     return;
   }
 
+  blockBrowserBackButton();
   syncButtons();
   syncProgress();
   setupQualitySelect();
