@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Home</title>
 
-  <link rel="stylesheet" href="style.css?v=20260617-2"/>
+  <link rel="stylesheet" href="style.css?v=20260617-analytics"/>
 
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
@@ -19,6 +19,15 @@
 
   <nav class="navbar">
     <span class="navbar-brand">✨ Meu Espaço</span>
+    <button
+      class="btn-analytics"
+      id="btn-analytics"
+      type="button"
+      onclick="window.location.href='analytics.html'"
+      hidden
+    >
+      Analise
+    </button>
     <button class="btn-logout" onclick="doLogout()">
       Sair
     </button>
@@ -270,11 +279,11 @@ Aqui eu sou completamente sua:
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-  <script src="supabase-config.js?v=20260617-2"></script>
+  <script src="supabase-config.js?v=20260617-analytics"></script>
 
-  <script src="auth.js?v=20260617-2"></script>
+  <script src="auth.js?v=20260617-analytics"></script>
 
-  <script src="app.js?v=20260617-2"></script>
+  <script src="app.js?v=20260617-analytics"></script>
 
 </body>
 </html>
