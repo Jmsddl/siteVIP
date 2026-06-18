@@ -282,6 +282,7 @@ function requestStageFullscreen(stage) {
   const fallbackButton = document.getElementById('fallback-button');
   const title = document.getElementById('player-title');
   const ui = document.getElementById('player-ui');
+  const playHint = document.getElementById('player-play-hint');
   const centerToggle = document.getElementById('center-toggle');
   const playToggle = document.getElementById('play-toggle');
   const muteToggle = document.getElementById('mute-toggle');
@@ -313,6 +314,7 @@ function requestStageFullscreen(stage) {
   let demoMaxAllowedTime = Math.max(0, startTime || 0);
   let correctingDemoSeek = false;
   let demoLocked = false;
+  let playHintDismissed = false;
 
   title.textContent = titleText;
   lockText.textContent = vipMessage;
@@ -445,16 +447,47 @@ function requestStageFullscreen(stage) {
     loading.textContent = message;
   }
 
+  function getPlaybackButtonHtml(isPaused) {
+    if (isPaused) {
+      return '<span class="player-button-icon" aria-hidden="true">&#9658;</span><span>Tocar</span>';
+    }
+
+    return '<span class="player-button-icon" aria-hidden="true">II</span><span>Pausar</span>';
+  }
+
+  function syncPlayHint() {
+    if (!playHint || playHintDismissed || !video.paused || demoLocked || video.hidden) {
+      if (playHint) {
+        playHint.hidden = true;
+      }
+      return;
+    }
+
+    playHint.hidden = false;
+  }
+
+  function dismissPlayHint() {
+    playHintDismissed = true;
+
+    if (playHint) {
+      playHint.hidden = true;
+    }
+  }
+
   function syncButtons() {
     const isPaused = video.paused || video.ended;
     const isMuted = video.muted || video.volume === 0;
     const fullscreenActive = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
 
-    playToggle.textContent = isPaused ? 'Play' : 'Pause';
-    centerToggle.textContent = isPaused ? 'Play' : 'Pause';
+    playToggle.innerHTML = getPlaybackButtonHtml(isPaused);
+    centerToggle.innerHTML = getPlaybackButtonHtml(isPaused);
+    playToggle.setAttribute('aria-label', isPaused ? 'Tocar video' : 'Pausar video');
+    centerToggle.setAttribute('aria-label', isPaused ? 'Tocar video' : 'Pausar video');
     muteToggle.textContent = isMuted ? 'Sem som' : 'Som';
     fullscreenToggle.textContent = fullscreenActive ? 'Sair da tela cheia' : 'Tela cheia';
+    playToggle.classList.toggle('is-paused', isPaused);
     centerToggle.classList.toggle('is-paused', isPaused);
+    syncPlayHint();
   }
 
   function syncProgress() {
@@ -587,6 +620,7 @@ function requestStageFullscreen(stage) {
     applyStartTime();
     loading.hidden = true;
     errorBox.hidden = true;
+    syncPlayHint();
     showUi();
   });
 
@@ -605,6 +639,7 @@ function requestStageFullscreen(stage) {
   });
 
   video.addEventListener('play', () => {
+    dismissPlayHint();
     applyStartTime();
     if (demoMode) {
       demoLastWatchTick = Date.now();
