@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Player</title>
-  <link rel="stylesheet" href="style.css?v=20260618-playhint" />
+  <link rel="stylesheet" href="style.css?v=20260618-reproduzir" />
 </head>
 <body class="standalone-player-page">
   <main class="standalone-player-shell">
@@ -38,7 +38,7 @@
         </p>
         <div class="standalone-player-error-actions">
           <button class="standalone-player-back" type="button" onclick="goBackToHome()">
-            Voltar
+            Fechar
           </button>
           <button class="standalone-player-secondary" type="button" id="fallback-button">
             Abrir no Drive
@@ -64,7 +64,7 @@
             Chamar no WhatsApp
           </a>
           <button class="standalone-player-back" type="button" onclick="goBackToHome()">
-            Voltar
+            Fechar
           </button>
         </div>
       </div>
@@ -72,7 +72,7 @@
       <div class="standalone-player-ui" id="player-ui">
         <div class="standalone-player-topbar">
           <button class="standalone-player-back" type="button" onclick="goBackToHome()">
-            Voltar
+            Fechar
           </button>
           <div class="standalone-player-title" id="player-title"></div>
         </div>
@@ -85,7 +85,7 @@
 
         <button class="standalone-player-center is-paused" id="center-toggle" type="button" aria-label="Reproduzir video">
           <span class="player-button-icon" aria-hidden="true">&#9658;</span>
-          <span>Tocar</span>
+          <span>Reproduzir</span>
         </button>
 
         <div class="standalone-player-bottom">
@@ -102,7 +102,7 @@
           <div class="standalone-player-controls">
             <button class="standalone-player-control standalone-player-play-button" id="play-toggle" type="button" aria-label="Reproduzir video">
               <span class="player-button-icon" aria-hidden="true">&#9658;</span>
-              <span>Tocar</span>
+              <span>Reproduzir</span>
             </button>
             <button class="standalone-player-control" id="mute-toggle" type="button">
               Som
@@ -122,6 +122,6 @@
     </section>
   </main>
 
-  <script src="player.js?v=20260618-playhint"></script>
+  <script src="player.js?v=20260618-reproduzir"></script>
 </body>
 </html>
