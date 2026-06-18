@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Player</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=20260618-playhint" />
 </head>
 <body class="standalone-player-page">
   <main class="standalone-player-shell">
@@ -77,8 +77,15 @@
           <div class="standalone-player-title" id="player-title"></div>
         </div>
 
-        <button class="standalone-player-center" id="center-toggle" type="button">
-          Play
+        <div class="standalone-player-play-hint" id="player-play-hint" hidden>
+          <span>Clique em</span>
+          <strong><b>&#9658;</b> Tocar</strong>
+          <small>para iniciar o video</small>
+        </div>
+
+        <button class="standalone-player-center is-paused" id="center-toggle" type="button" aria-label="Tocar video">
+          <span class="player-button-icon" aria-hidden="true">&#9658;</span>
+          <span>Tocar</span>
         </button>
 
         <div class="standalone-player-bottom">
@@ -93,8 +100,9 @@
             value="0"
           />
           <div class="standalone-player-controls">
-            <button class="standalone-player-control" id="play-toggle" type="button">
-              Play
+            <button class="standalone-player-control standalone-player-play-button" id="play-toggle" type="button" aria-label="Tocar video">
+              <span class="player-button-icon" aria-hidden="true">&#9658;</span>
+              <span>Tocar</span>
             </button>
             <button class="standalone-player-control" id="mute-toggle" type="button">
               Som
@@ -114,6 +122,6 @@
     </section>
   </main>
 
-  <script src="player.js"></script>
+  <script src="player.js?v=20260618-playhint"></script>
 </body>
 </html>
