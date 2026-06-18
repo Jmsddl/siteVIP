@@ -62,11 +62,14 @@ const DEFAULT_VIP_OFFERS = [
 ];
 const DRIVE_FILE_ID_PATTERN = /^[A-Za-z0-9_-]{10,}$/;
 const DIRECT_VIDEO_EXTENSION_PATTERN = /\.(mp4|webm|ogg|m4v|mov)(\?|#|$)/i;
+const ANALYTICS_SESSION_KEY = 'analytics_session_id';
+const ADMIN_PLAN = 'admin';
 
 let vipConfig = { ...DEFAULT_VIP_CONFIG };
 let floatingOfferInitialized = false;
 let floatingOfferManuallyClosed = false;
 let floatingOfferHintTimer = null;
+let analyticsIpPromise = null;
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -111,12 +114,85 @@ function getStoredUser() {
   }
 }
 
+function isAdminUser() {
+  return String(getStoredUser().plano || '').toLowerCase() === ADMIN_PLAN;
+}
+
 function isDemoUser() {
   const user = getStoredUser();
   const username = String(user.username || '').toLowerCase();
   const plan = String(user.plano || '').toLowerCase();
 
   return plan === DEMO_PLAN || DEMO_USERNAMES.includes(username);
+}
+
+function getAnalyticsSessionId() {
+  let sessionId = sessionStorage.getItem(ANALYTICS_SESSION_KEY);
+
+  if (!sessionId) {
+    if (window.crypto?.randomUUID) {
+      sessionId = window.crypto.randomUUID();
+    } else {
+      sessionId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    }
+
+    sessionStorage.setItem(ANALYTICS_SESSION_KEY, sessionId);
+  }
+
+  return sessionId;
+}
+
+function getClientIp() {
+  if (!analyticsIpPromise) {
+    analyticsIpPromise = fetch('/cdn-cgi/trace', { cache: 'no-store' })
+      .then((response) => (response.ok ? response.text() : ''))
+      .then((text) => {
+        const match = text.match(/^ip=(.+)$/m);
+        return match ? match[1].trim() : '';
+      })
+      .catch(() => '');
+  }
+
+  return analyticsIpPromise;
+}
+
+function trackEvent(evento, detalhes = {}) {
+  const user = getStoredUser();
+
+  if (typeof _supa === 'undefined' || !_supa || !evento) {
+    return;
+  }
+
+  getClientIp().then((ip) => {
+    _supa
+      .from('analytics_eventos')
+      .insert({
+        username: user.username || 'Anonimo',
+        plano: user.plano || '',
+        sessao_id: getAnalyticsSessionId(),
+        ip: ip || null,
+        evento,
+        alvo_tipo: detalhes.alvo_tipo || null,
+        alvo_titulo: detalhes.alvo_titulo || null,
+        alvo_url: detalhes.alvo_url || null,
+        pagina: window.location.pathname,
+        user_agent: navigator.userAgent,
+        detalhes
+      })
+      .then(({ error }) => {
+        if (error) {
+          console.warn('Analytics nao registrado:', error.message || error);
+        }
+      });
+  });
+}
+
+function setupAdminAnalyticsLink() {
+  const button = document.getElementById('btn-analytics');
+
+  if (button) {
+    button.hidden = !isAdminUser();
+  }
 }
 
 function normalizeVipConfig(config) {
@@ -430,6 +506,10 @@ function renderFloatingOfferPanel(offers) {
 
   if (close && reopen && !floatingOfferInitialized) {
     close.addEventListener('click', () => {
+      trackEvent('fechou_janela_valores', {
+        alvo_tipo: 'janelinha',
+        alvo_titulo: 'Valores e VIP'
+      });
       floatingOfferManuallyClosed = true;
       hideFloatingOfferHint();
       hideFloatingOfferPanel();
@@ -437,6 +517,10 @@ function renderFloatingOfferPanel(offers) {
     });
 
     reopen.addEventListener('click', () => {
+      trackEvent('reabriu_janela_valores', {
+        alvo_tipo: 'janelinha',
+        alvo_titulo: 'Valores e VIP'
+      });
       floatingOfferManuallyClosed = false;
       reopen.hidden = true;
       showFloatingOfferPanel(true);
@@ -450,6 +534,11 @@ function renderFloatingOfferPanel(offers) {
 }
 
 function switchTab(tab, btn) {
+  trackEvent('clicou_aba', {
+    alvo_tipo: 'aba',
+    alvo_titulo: tab
+  });
+
   document.querySelectorAll('.tab').forEach((tabButton) => tabButton.classList.remove('active'));
   btn.classList.add('active');
 
@@ -489,6 +578,13 @@ function renderGridMessage(gridId, message) {
 async function loadContent() {
   try {
     const demoMode = isDemoUser();
+
+    setupAdminAnalyticsLink();
+    trackEvent('acessou_home', {
+      alvo_tipo: 'pagina',
+      alvo_titulo: 'home',
+      modo_teste: demoMode
+    });
 
     vipConfig = await loadVipConfig();
     renderFloatingOfferPanel(await loadVipOffers());
@@ -556,6 +652,11 @@ function renderVideos(videos) {
     const card = document.createElement('div');
     card.className = 'card';
     card.onclick = function () {
+      trackEvent('clicou_video', {
+        alvo_tipo: 'video',
+        alvo_titulo: video.titulo || '',
+        alvo_url: video.stream_url || ''
+      });
       openVideo(video.stream_url, video.titulo);
     };
 
@@ -685,6 +786,11 @@ function renderFotos(fotos, options = {}) {
       `;
 
       card.querySelector('.preview-unlock-button').addEventListener('click', () => {
+        trackEvent('clicou_liberar_foto_previa', {
+          alvo_tipo: 'foto_previa',
+          alvo_titulo: foto.titulo || '',
+          alvo_url: imageUrl || ''
+        });
         openPreviewPhotoLock(foto);
       });
 
@@ -693,6 +799,11 @@ function renderFotos(fotos, options = {}) {
     }
 
     card.onclick = function () {
+      trackEvent('clicou_foto', {
+        alvo_tipo: 'foto',
+        alvo_titulo: foto.titulo || '',
+        alvo_url: imageUrl || ''
+      });
       const player = document.getElementById('modal-video');
 
       if (fileId) {
@@ -1041,6 +1152,12 @@ function showDemoVideoLock() {
   }
 
   overlay.hidden = false;
+
+  trackEvent('bloqueio_video_teste', {
+    alvo_tipo: 'video',
+    alvo_titulo: document.getElementById('modal-title')?.textContent || '',
+    limite_segundos: getPreviewSeconds()
+  });
 }
 
 function setupDemoVideoLock(videoElement, startTime = 0) {
@@ -1300,6 +1417,15 @@ function openVideo(url, titulo) {
 }
 
 async function closeVideoModal() {
+  const title = document.getElementById('modal-title')?.textContent || '';
+
+  if (document.getElementById('video-modal')?.classList.contains('open')) {
+    trackEvent('fechou_midia', {
+      alvo_tipo: 'modal',
+      alvo_titulo: title
+    });
+  }
+
   document.getElementById('modal-video').innerHTML = '';
   const modal = document.getElementById('video-modal');
   modal.classList.remove('open', 'mobile-player-mode');
@@ -1427,6 +1553,11 @@ async function postComment() {
     alert('Nao consegui enviar o comentario agora.');
     return;
   }
+
+  trackEvent('enviou_comentario', {
+    alvo_tipo: 'comentario',
+    alvo_titulo: texto.slice(0, 80)
+  });
 
   document.getElementById('comment-text').value = '';
   loadComments();
