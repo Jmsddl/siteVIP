@@ -449,7 +449,7 @@ function requestStageFullscreen(stage) {
 
   function getPlaybackButtonHtml(isPaused) {
     if (isPaused) {
-      return '<span class="player-button-icon" aria-hidden="true">&#9658;</span><span>Tocar</span>';
+      return '<span class="player-button-icon" aria-hidden="true">&#9658;</span><span>Reproduzir</span>';
     }
 
     return '<span class="player-button-icon" aria-hidden="true">II</span><span>Pausar</span>';
