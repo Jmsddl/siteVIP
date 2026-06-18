@@ -481,8 +481,8 @@ function requestStageFullscreen(stage) {
 
     playToggle.innerHTML = getPlaybackButtonHtml(isPaused);
     centerToggle.innerHTML = getPlaybackButtonHtml(isPaused);
-    playToggle.setAttribute('aria-label', isPaused ? 'Tocar video' : 'Pausar video');
-    centerToggle.setAttribute('aria-label', isPaused ? 'Tocar video' : 'Pausar video');
+    playToggle.setAttribute('aria-label', isPaused ? 'Reproduzir video' : 'Pausar video');
+    centerToggle.setAttribute('aria-label', isPaused ? 'Reproduzir video' : 'Pausar video');
     muteToggle.textContent = isMuted ? 'Sem som' : 'Som';
     fullscreenToggle.textContent = fullscreenActive ? 'Sair da tela cheia' : 'Tela cheia';
     playToggle.classList.toggle('is-paused', isPaused);
