@@ -1267,7 +1267,7 @@ function openStandaloneMobilePlayer(url, titulo) {
     params.set('contact_label', getContactButtonText());
   }
 
-  window.location.href = `player.html?v=20260618-playhint&${params.toString()}`;
+  window.location.href = `player.html?v=20260618-reproduzir&${params.toString()}`;
 }
 
 function isDirectVideoUrl(url) {
