@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Home</title>
 
-  <link rel="stylesheet" href="style.css?v=20260619-checkout"/>
+  <link rel="stylesheet" href="style.css?v=20260619-call-room"/>
 
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
@@ -19,6 +19,22 @@
 
   <nav class="navbar">
     <span class="navbar-brand">✨ Meu Espaço</span>
+    <div class="navbar-call-actions">
+      <button
+        class="btn-call-action"
+        type="button"
+        onclick="openPreviewCallRoom()"
+      >
+        Fazer chamada previa agora
+      </button>
+      <button
+        class="btn-call-action is-primary"
+        type="button"
+        onclick="openFullCallModal()"
+      >
+        Fazer chamada completa
+      </button>
+    </div>
     <button
       class="btn-analytics"
       id="btn-analytics"
@@ -27,6 +43,15 @@
       hidden
     >
       Analise
+    </button>
+    <button
+      class="btn-analytics"
+      id="btn-call-room-admin"
+      type="button"
+      onclick="window.location.href='sala-virtual.html'"
+      hidden
+    >
+      Sala virtual
     </button>
     <button class="btn-logout" onclick="doLogout()">
       Sair
@@ -221,6 +246,92 @@ Aqui eu sou completamente sua:
 
   </div>
 
+  <!-- MODAL CHAMADA PREVIA -->
+
+  <div
+    class="call-modal-overlay"
+    id="preview-call-modal"
+    hidden
+  >
+    <div class="call-modal-card">
+      <button
+        class="call-modal-close"
+        type="button"
+        aria-label="Fechar chamada previa"
+        onclick="closePreviewCallRoom()"
+      >
+        x
+      </button>
+      <span class="call-modal-kicker">Chamada previa</span>
+      <h2 id="preview-call-title">Sala de espera</h2>
+      <p id="preview-call-message">
+        Aguarde, estamos notificando Amanda para entrar.
+      </p>
+      <div class="call-wait-timer">
+        <span>Tempo aguardando</span>
+        <strong id="preview-call-timer">00:00</strong>
+      </div>
+      <button
+        class="btn-primary call-enter-button"
+        id="preview-call-enter"
+        type="button"
+        disabled
+      >
+        Entrar na chamada
+      </button>
+      <button
+        class="btn-secondary call-complete-shortcut"
+        id="preview-call-complete-shortcut"
+        type="button"
+        onclick="openFullCallModal()"
+        hidden
+      >
+        Pagar chamada completa
+      </button>
+    </div>
+  </div>
+
+  <!-- MODAL CHAMADA COMPLETA -->
+
+  <div
+    class="call-modal-overlay"
+    id="full-call-modal"
+    hidden
+  >
+    <div class="call-modal-card">
+      <button
+        class="call-modal-close"
+        type="button"
+        aria-label="Fechar chamada completa"
+        onclick="closeFullCallModal()"
+      >
+        x
+      </button>
+      <span class="call-modal-kicker">Chamada completa</span>
+      <h2>Escolha o tempo da chamada</h2>
+      <p>
+        Selecione uma opcao para liberar o checkout da chamada.
+      </p>
+      <select
+        class="vip-plan-select"
+        id="full-call-select"
+        aria-label="Escolha o tempo da chamada completa"
+      >
+        <option value="">Selecione uma opcao</option>
+        <option value="5_min">Chamada 5 minutos</option>
+        <option value="10_min">Chamada 10 minutos</option>
+      </select>
+      <button
+        class="btn-primary call-enter-button"
+        id="full-call-checkout"
+        type="button"
+        disabled
+      >
+        Liberar chamada completa
+      </button>
+    </div>
+  </div>
+
   <!-- PAINEL FLUTUANTE DE OFERTAS -->
 
   <aside
@@ -283,7 +394,7 @@ Aqui eu sou completamente sua:
 
   <script src="auth.js?v=20260617-analytics"></script>
 
-  <script src="app.js?v=20260619-video-analytics"></script>
+  <script src="app.js?v=20260619-call-room"></script>
 
 </body>
 </html>
