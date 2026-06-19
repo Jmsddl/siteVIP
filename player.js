@@ -1,5 +1,97 @@
 const DRIVE_FILE_ID_PATTERN = /^[A-Za-z0-9_-]{10,}$/;
 const DIRECT_VIDEO_EXTENSION_PATTERN = /\.(mp4|webm|ogg|m4v|mov)(\?|#|$)/i;
+const ANALYTICS_SESSION_KEY = 'analytics_session_id';
+const VIP_LOCK_MESSAGE = 'Assine o VIP e continue assistindo.';
+const VIP_CHECKOUT_OPTIONS = [
+  {
+    value: '7_dias',
+    label: '7 dias de acesso',
+    url: 'https://paylume.fans/c/amandavip'
+  },
+  {
+    value: '30_dias',
+    label: '30 dias de acesso',
+    url: 'https://paylume.fans/c/amandavip-3034'
+  },
+  {
+    value: '3_meses',
+    label: '3 meses de acesso',
+    url: 'https://naomeclonaporfavor.com/c/amandavip-ff1e'
+  }
+];
+
+let analyticsIpPromise = null;
+
+function getStoredUser() {
+  try {
+    return JSON.parse(sessionStorage.getItem('user') || '{}');
+  } catch (error) {
+    return {};
+  }
+}
+
+function getAnalyticsSessionId() {
+  let sessionId = sessionStorage.getItem(ANALYTICS_SESSION_KEY);
+
+  if (!sessionId) {
+    if (window.crypto?.randomUUID) {
+      sessionId = window.crypto.randomUUID();
+    } else {
+      sessionId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    }
+
+    sessionStorage.setItem(ANALYTICS_SESSION_KEY, sessionId);
+  }
+
+  return sessionId;
+}
+
+function getClientIp() {
+  if (!analyticsIpPromise) {
+    analyticsIpPromise = fetch('/cdn-cgi/trace', { cache: 'no-store' })
+      .then((response) => (response.ok ? response.text() : ''))
+      .then((text) => {
+        const match = text.match(/^ip=(.+)$/m);
+        return match ? match[1].trim() : '';
+      })
+      .catch(() => '');
+  }
+
+  return analyticsIpPromise;
+}
+
+function trackEvent(evento, detalhes = {}) {
+  const user = getStoredUser();
+
+  if (typeof _supa === 'undefined' || !_supa || !evento) {
+    return Promise.resolve();
+  }
+
+  return getClientIp().then((ip) => (
+    _supa
+      .from('analytics_eventos')
+      .insert({
+        username: user.username || 'Anonimo',
+        plano: user.plano || '',
+        sessao_id: getAnalyticsSessionId(),
+        ip: ip || null,
+        evento,
+        alvo_tipo: detalhes.alvo_tipo || null,
+        alvo_titulo: detalhes.alvo_titulo || null,
+        alvo_url: detalhes.alvo_url || null,
+        pagina: window.location.pathname,
+        user_agent: navigator.userAgent,
+        detalhes
+      })
+      .then(({ error }) => {
+        if (error) {
+          console.warn('Analytics nao registrado:', error.message || error);
+        }
+      })
+  )).catch((error) => {
+    console.warn('Analytics nao registrado:', error.message || error);
+  });
+}
 
 function getDriveFileId(url) {
   if (typeof url !== 'string' || !url) {
@@ -216,6 +308,17 @@ function goBackToHome() {
   window.location.replace('home.html');
 }
 
+function getVipCheckoutOption(value) {
+  return VIP_CHECKOUT_OPTIONS.find((option) => option.value === value) || null;
+}
+
+function waitBrieflyForAnalytics(eventPromise) {
+  return Promise.race([
+    Promise.resolve(eventPromise),
+    new Promise((resolve) => window.setTimeout(resolve, 450))
+  ]);
+}
+
 function formatTime(totalSeconds) {
   if (!Number.isFinite(totalSeconds) || totalSeconds < 0) {
     return '0:00';
@@ -285,9 +388,6 @@ function requestStageFullscreen(stage) {
   const titleText = params.get('titulo') || 'Video';
   const demoMode = params.get('demo') === '1';
   const demoLimit = Math.min(5, Math.max(1, Number(params.get('limit') || 5)));
-  const vipMessage = params.get('vip_message') || 'Entre em contato para assinar o VIP e continuar assistindo.';
-  const contactUrl = params.get('contact_url') || params.get('telegram_url') || '';
-  const contactLabel = params.get('contact_label') || 'Chamar no WhatsApp';
   const stage = document.getElementById('player-stage');
   const video = document.getElementById('standalone-video');
   const embedFrame = document.getElementById('standalone-embed');
@@ -305,7 +405,8 @@ function requestStageFullscreen(stage) {
   const fullscreenToggle = document.getElementById('fullscreen-toggle');
   const lockBox = document.getElementById('player-lock');
   const lockText = document.getElementById('player-lock-text');
-  const lockTelegram = document.getElementById('player-lock-telegram');
+  const planSelect = document.getElementById('player-plan-select');
+  const checkoutButton = document.getElementById('player-checkout-button');
   const progress = document.getElementById('player-progress');
   const timeLabel = document.getElementById('player-time');
   const pornhubEmbedUrl = buildPornhubEmbedUrl(rawUrl);
@@ -331,14 +432,47 @@ function requestStageFullscreen(stage) {
   let demoLocked = false;
   let playHintDismissed = false;
   let backHintTimer = null;
+  let playClickTracked = false;
+  let playbackTracked = false;
 
   title.textContent = titleText;
-  lockText.textContent = vipMessage;
+  lockText.textContent = VIP_LOCK_MESSAGE;
 
-  if (contactUrl) {
-    lockTelegram.href = contactUrl;
-    lockTelegram.textContent = contactLabel;
-    lockTelegram.hidden = false;
+  if (planSelect && checkoutButton) {
+    planSelect.addEventListener('change', () => {
+      const selectedOption = getVipCheckoutOption(planSelect.value);
+
+      checkoutButton.disabled = !selectedOption;
+      checkoutButton.classList.toggle('is-ready', Boolean(selectedOption));
+
+      if (selectedOption) {
+        trackEvent('selecionou_plano_vip', {
+          alvo_tipo: 'checkout',
+          alvo_titulo: selectedOption.label,
+          alvo_url: selectedOption.url,
+          origem_player: 'standalone'
+        });
+      }
+    });
+
+    checkoutButton.addEventListener('click', () => {
+      const selectedOption = getVipCheckoutOption(planSelect.value);
+
+      if (!selectedOption || checkoutButton.disabled) {
+        return;
+      }
+
+      const analyticsPromise = trackEvent('clicou_liberar_vip', {
+        alvo_tipo: 'checkout',
+        alvo_titulo: selectedOption.label,
+        alvo_url: selectedOption.url,
+        origem_player: 'standalone'
+      });
+
+      waitBrieflyForAnalytics(analyticsPromise).finally(() => {
+        window.location.href = selectedOption.url;
+      });
+    });
   }
 
   fallbackButton.textContent = pornhubEmbedUrl || !driveFileId ? 'Abrir original' : 'Abrir no Drive';
@@ -649,6 +783,16 @@ function requestStageFullscreen(stage) {
     }
 
     if (video.paused || video.ended) {
+      if (!playClickTracked) {
+        playClickTracked = true;
+        trackEvent('clicou_reproduzir_video', {
+          alvo_tipo: driveFileId ? 'drive_video' : 'video',
+          alvo_titulo: titleText,
+          alvo_url: rawUrl,
+          origem_player: 'standalone'
+        });
+      }
+
       try {
         await video.play();
       } catch (error) {
@@ -705,7 +849,21 @@ function requestStageFullscreen(stage) {
     showUi();
   });
 
-  video.addEventListener('playing', applyStartTime);
+  video.addEventListener('playing', () => {
+    applyStartTime();
+
+    if (playbackTracked) {
+      return;
+    }
+
+    playbackTracked = true;
+    trackEvent('reproduziu_video', {
+      alvo_tipo: driveFileId ? 'drive_video' : 'video',
+      alvo_titulo: titleText,
+      alvo_url: rawUrl,
+      origem_player: 'standalone'
+    });
+  });
 
   video.addEventListener('pause', () => {
     pauseDemoCounter();
