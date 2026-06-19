@@ -80,13 +80,17 @@ function eventLabel(evento) {
     acessou_home: 'Acessou o site',
     clicou_aba: 'Clicou em aba',
     clicou_video: 'Clicou em video',
+    clicou_reproduzir_video: 'Tentou reproduzir video',
+    reproduziu_video: 'Video reproduzido',
     bloqueio_video_teste: 'Bateu no bloqueio',
     clicou_foto: 'Clicou em foto',
     clicou_liberar_foto_previa: 'Tentou liberar foto',
     enviou_comentario: 'Enviou comentario',
     fechou_janela_valores: 'Fechou janelinha',
     reabriu_janela_valores: 'Reabriu janelinha',
-    fechou_midia: 'Fechou midia'
+    fechou_midia: 'Fechou midia',
+    selecionou_plano_vip: 'Escolheu plano VIP',
+    clicou_liberar_vip: 'Clicou em Liberar VIP'
   };
 
   return labels[evento] || evento || 'Evento';
@@ -109,10 +113,14 @@ function renderStats(rows) {
   const testAccesses = testRows.filter((row) => row.evento === 'acessou_home').length;
   const testSessions = uniqueCount(testRows, 'sessao_id');
   const videoClicks = rows.filter((row) => row.evento === 'clicou_video').length;
+  const videoPlayClicks = rows.filter((row) => row.evento === 'clicou_reproduzir_video').length;
+  const videosStarted = rows.filter((row) => row.evento === 'reproduziu_video').length;
   const photoClicks = rows.filter((row) => (
     row.evento === 'clicou_foto' ||
     row.evento === 'clicou_liberar_foto_previa'
   )).length;
+  const planSelected = rows.filter((row) => row.evento === 'selecionou_plano_vip').length;
+  const vipUnlocks = rows.filter((row) => row.evento === 'clicou_liberar_vip').length;
   const offerCloses = rows.filter((row) => row.evento === 'fechou_janela_valores').length;
   const commentsTab = rows.filter((row) => (
     row.evento === 'clicou_aba' &&
@@ -123,7 +131,11 @@ function renderStats(rows) {
   setStat('stat-test-access', testAccesses);
   setStat('stat-test-sessions', testSessions);
   setStat('stat-videos', videoClicks);
+  setStat('stat-video-play-clicks', videoPlayClicks);
+  setStat('stat-video-started', videosStarted);
   setStat('stat-photos', photoClicks);
+  setStat('stat-plan-selected', planSelected);
+  setStat('stat-vip-unlocks', vipUnlocks);
   setStat('stat-offer-close', offerCloses);
   setStat('stat-comments-tab', commentsTab);
 }
