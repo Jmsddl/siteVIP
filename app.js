@@ -64,6 +64,24 @@ const DRIVE_FILE_ID_PATTERN = /^[A-Za-z0-9_-]{10,}$/;
 const DIRECT_VIDEO_EXTENSION_PATTERN = /\.(mp4|webm|ogg|m4v|mov)(\?|#|$)/i;
 const ANALYTICS_SESSION_KEY = 'analytics_session_id';
 const ADMIN_PLAN = 'admin';
+const VIP_LOCK_MESSAGE = 'Assine o VIP e continue assistindo.';
+const VIP_CHECKOUT_OPTIONS = [
+  {
+    value: '7_dias',
+    label: '7 dias de acesso',
+    url: 'https://paylume.fans/c/amandavip'
+  },
+  {
+    value: '30_dias',
+    label: '30 dias de acesso',
+    url: 'https://paylume.fans/c/amandavip-3034'
+  },
+  {
+    value: '3_meses',
+    label: '3 meses de acesso',
+    url: 'https://naomeclonaporfavor.com/c/amandavip-ff1e'
+  }
+];
 
 let vipConfig = { ...DEFAULT_VIP_CONFIG };
 let floatingOfferInitialized = false;
@@ -160,10 +178,10 @@ function trackEvent(evento, detalhes = {}) {
   const user = getStoredUser();
 
   if (typeof _supa === 'undefined' || !_supa || !evento) {
-    return;
+    return Promise.resolve();
   }
 
-  getClientIp().then((ip) => {
+  return getClientIp().then((ip) => (
     _supa
       .from('analytics_eventos')
       .insert({
@@ -183,7 +201,9 @@ function trackEvent(evento, detalhes = {}) {
         if (error) {
           console.warn('Analytics nao registrado:', error.message || error);
         }
-      });
+      })
+  )).catch((error) => {
+    console.warn('Analytics nao registrado:', error.message || error);
   });
 }
 
@@ -256,24 +276,110 @@ function getContactButtonText() {
   return vipConfig.botao_contato_texto || DEFAULT_VIP_CONFIG.botao_contato_texto;
 }
 
-function buildVipNoticeHtml(type, extraClass = '') {
-  const contactUrl = getContactUrl();
-  const contactButton = contactUrl
-    ? `
-      <a class="vip-lock-button" href="${escapeHtml(contactUrl)}" target="_blank" rel="noopener">
-        ${escapeHtml(getContactButtonText())}
-      </a>
-    `
-    : '';
+function getVipCheckoutOption(value) {
+  return VIP_CHECKOUT_OPTIONS.find((option) => option.value === value) || null;
+}
 
+function waitBrieflyForAnalytics(eventPromise) {
+  return Promise.race([
+    Promise.resolve(eventPromise),
+    new Promise((resolve) => window.setTimeout(resolve, 450))
+  ]);
+}
+
+function buildVipCheckoutHtml() {
+  return `
+    <div class="vip-checkout-box">
+      <label class="vip-checkout-label">
+        Escolha seu tempo de acesso
+      </label>
+      <select class="vip-plan-select" aria-label="Escolha o tempo de acesso">
+        <option value="">Selecione uma opcao</option>
+        ${VIP_CHECKOUT_OPTIONS.map((option) => `
+          <option value="${escapeHtml(option.value)}">
+            ${escapeHtml(option.label)}
+          </option>
+        `).join('')}
+      </select>
+      <button class="vip-lock-button vip-checkout-button" type="button" disabled>
+        Liberar VIP
+      </button>
+    </div>
+  `;
+}
+
+function buildVipNoticeHtml(type, extraClass = '') {
   return `
     <div class="vip-lock-card ${extraClass}">
       <span class="vip-lock-kicker">Acesso VIP</span>
       <h3>Conteudo bloqueado</h3>
-      <p>${escapeHtml(buildVipMessage(type))}</p>
-      ${contactButton}
+      <p>${VIP_LOCK_MESSAGE}</p>
+      ${buildVipCheckoutHtml()}
     </div>
   `;
+}
+
+function setupVipCheckoutHandlers() {
+  document.addEventListener('change', (event) => {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+
+    const select = event.target.closest('.vip-plan-select');
+
+    if (!select) {
+      return;
+    }
+
+    const card = select.closest('.vip-lock-card');
+    const button = card?.querySelector('.vip-checkout-button');
+    const selectedOption = getVipCheckoutOption(select.value);
+
+    if (!button) {
+      return;
+    }
+
+    button.disabled = !selectedOption;
+    button.classList.toggle('is-ready', Boolean(selectedOption));
+
+    if (selectedOption) {
+      trackEvent('selecionou_plano_vip', {
+        alvo_tipo: 'checkout',
+        alvo_titulo: selectedOption.label,
+        alvo_url: selectedOption.url
+      });
+    }
+  });
+
+  document.addEventListener('click', (event) => {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+
+    const button = event.target.closest('.vip-checkout-button');
+
+    if (!button || button.disabled) {
+      return;
+    }
+
+    const card = button.closest('.vip-lock-card');
+    const select = card?.querySelector('.vip-plan-select');
+    const selectedOption = getVipCheckoutOption(select?.value || '');
+
+    if (!selectedOption) {
+      return;
+    }
+
+    const analyticsPromise = trackEvent('clicou_liberar_vip', {
+      alvo_tipo: 'checkout',
+      alvo_titulo: selectedOption.label,
+      alvo_url: selectedOption.url
+    });
+
+    waitBrieflyForAnalytics(analyticsPromise).finally(() => {
+      window.location.href = selectedOption.url;
+    });
+  });
 }
 
 function getPreviewSeconds() {
@@ -1267,7 +1373,7 @@ function openStandaloneMobilePlayer(url, titulo) {
     params.set('contact_label', getContactButtonText());
   }
 
-  window.location.href = `player.html?v=20260618-reproduzir&${params.toString()}`;
+  window.location.href = `player.html?v=20260619-video-analytics&${params.toString()}`;
 }
 
 function isDirectVideoUrl(url) {
@@ -1281,6 +1387,43 @@ function isCloudflareR2Url(url) {
   } catch (error) {
     return false;
   }
+}
+
+function setupVideoPlaybackAnalytics(videoElement, videoUrl, videoTitle, sourceType = 'video') {
+  if (!videoElement) {
+    return;
+  }
+
+  let playClickTracked = false;
+  let playbackTracked = false;
+
+  videoElement.addEventListener('play', () => {
+    if (playClickTracked) {
+      return;
+    }
+
+    playClickTracked = true;
+    trackEvent('clicou_reproduzir_video', {
+      alvo_tipo: sourceType,
+      alvo_titulo: videoTitle || '',
+      alvo_url: videoUrl || '',
+      origem_player: 'modal'
+    });
+  });
+
+  videoElement.addEventListener('playing', () => {
+    if (playbackTracked) {
+      return;
+    }
+
+    playbackTracked = true;
+    trackEvent('reproduziu_video', {
+      alvo_tipo: sourceType,
+      alvo_titulo: videoTitle || '',
+      alvo_url: videoUrl || '',
+      origem_player: 'modal'
+    });
+  });
 }
 
 async function requestElementFullscreen(element) {
@@ -1389,6 +1532,7 @@ function openVideo(url, titulo) {
     `;
     const modalVideo = player.querySelector('video');
     applyVideoStartTime(modalVideo, startTime);
+    setupVideoPlaybackAnalytics(modalVideo, url, titulo, 'drive_video');
     setupDemoVideoLock(modalVideo, startTime);
   } else if (isDirectVideoUrl(url)) {
     player.innerHTML = `
@@ -1406,6 +1550,7 @@ function openVideo(url, titulo) {
     `;
     const modalVideo = player.querySelector('video');
     applyVideoStartTime(modalVideo, startTime);
+    setupVideoPlaybackAnalytics(modalVideo, url, titulo, 'video');
     setupModalQualitySelect(player, modalVideo, qualityOptions, startTime);
     setupDemoVideoLock(modalVideo, startTime);
   } else {
@@ -1564,6 +1709,8 @@ async function postComment() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  setupVipCheckoutHandlers();
+
   const commentText = document.getElementById('comment-text');
 
   if (!commentText) {
