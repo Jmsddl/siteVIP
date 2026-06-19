@@ -82,12 +82,32 @@ const VIP_CHECKOUT_OPTIONS = [
     url: 'https://naomeclonaporfavor.com/c/amandavip-ff1e'
   }
 ];
+const PREVIEW_CALL_TABLE = 'chamadas_previas';
+const PREVIEW_CALL_MEET_URL = 'https://meet.google.com/xso-udcm-kgc';
+const PREVIEW_CALL_POLL_MS = 5000;
+const PREVIEW_CALL_ACTIVE_STATUSES = ['aguardando', 'liberado', 'em_chamada'];
+const FULL_CALL_OPTIONS = [
+  {
+    value: '5_min',
+    label: 'Chamada 5 minutos',
+    url: 'https://paylume.fans/c/chamada-com-amanda-7732'
+  },
+  {
+    value: '10_min',
+    label: 'Chamada 10 minutos',
+    url: 'https://paylume.fans/c/chamada-com-amanda'
+  }
+];
 
 let vipConfig = { ...DEFAULT_VIP_CONFIG };
 let floatingOfferInitialized = false;
 let floatingOfferManuallyClosed = false;
 let floatingOfferHintTimer = null;
 let analyticsIpPromise = null;
+let previewCallRecord = null;
+let previewCallPollTimer = null;
+let previewCallTimer = null;
+let previewCallStartedAt = null;
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -208,10 +228,16 @@ function trackEvent(evento, detalhes = {}) {
 }
 
 function setupAdminAnalyticsLink() {
-  const button = document.getElementById('btn-analytics');
+  const analyticsButton = document.getElementById('btn-analytics');
+  const roomButton = document.getElementById('btn-call-room-admin');
+  const hidden = !isAdminUser();
 
-  if (button) {
-    button.hidden = !isAdminUser();
+  if (analyticsButton) {
+    analyticsButton.hidden = hidden;
+  }
+
+  if (roomButton) {
+    roomButton.hidden = hidden;
   }
 }
 
@@ -380,6 +406,394 @@ function setupVipCheckoutHandlers() {
       window.location.href = selectedOption.url;
     });
   });
+}
+
+function getFullCallOption(value) {
+  return FULL_CALL_OPTIONS.find((option) => option.value === value) || null;
+}
+
+function formatCallWaitTime(startedAt) {
+  const startTime = startedAt ? new Date(startedAt).getTime() : Date.now();
+  const elapsed = Math.max(0, Math.floor((Date.now() - startTime) / 1000));
+  const minutes = String(Math.floor(elapsed / 60)).padStart(2, '0');
+  const seconds = String(elapsed % 60).padStart(2, '0');
+
+  return `${minutes}:${seconds}`;
+}
+
+function setPreviewCallMessage(title, message) {
+  const titleEl = document.getElementById('preview-call-title');
+  const messageEl = document.getElementById('preview-call-message');
+
+  if (titleEl) {
+    titleEl.textContent = title;
+  }
+
+  if (messageEl) {
+    messageEl.textContent = message;
+  }
+}
+
+function setPreviewCallEnterEnabled(enabled, label = 'Entrar na chamada') {
+  const button = document.getElementById('preview-call-enter');
+
+  if (!button) {
+    return;
+  }
+
+  button.disabled = !enabled;
+  button.textContent = label;
+  button.classList.toggle('is-ready', Boolean(enabled));
+}
+
+function showPreviewCompleteShortcut(show) {
+  const shortcut = document.getElementById('preview-call-complete-shortcut');
+
+  if (shortcut) {
+    shortcut.hidden = !show;
+  }
+}
+
+function stopPreviewCallTimers() {
+  if (previewCallPollTimer) {
+    window.clearInterval(previewCallPollTimer);
+    previewCallPollTimer = null;
+  }
+
+  if (previewCallTimer) {
+    window.clearInterval(previewCallTimer);
+    previewCallTimer = null;
+  }
+}
+
+function startPreviewCallTimer(startedAt) {
+  const timer = document.getElementById('preview-call-timer');
+
+  previewCallStartedAt = startedAt || new Date().toISOString();
+
+  if (!timer) {
+    return;
+  }
+
+  timer.textContent = formatCallWaitTime(previewCallStartedAt);
+
+  if (previewCallTimer) {
+    window.clearInterval(previewCallTimer);
+  }
+
+  previewCallTimer = window.setInterval(() => {
+    timer.textContent = formatCallWaitTime(previewCallStartedAt);
+  }, 1000);
+}
+
+function getPreviewCallIpKey(ip) {
+  return ip || `sessao:${getAnalyticsSessionId()}`;
+}
+
+async function getFinishedPreviewCallByIp(ip) {
+  const { data, error } = await _supa
+    .from(PREVIEW_CALL_TABLE)
+    .select('id,status,created_at')
+    .eq('ip', ip)
+    .eq('status', 'finalizado')
+    .limit(1);
+
+  if (error) {
+    throw error;
+  }
+
+  return data?.[0] || null;
+}
+
+async function getActivePreviewCallByIp(ip) {
+  const { data, error } = await _supa
+    .from(PREVIEW_CALL_TABLE)
+    .select('*')
+    .eq('ip', ip)
+    .in('status', PREVIEW_CALL_ACTIVE_STATUSES)
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (error) {
+    throw error;
+  }
+
+  return data?.[0] || null;
+}
+
+async function createPreviewCall(ip) {
+  const user = getStoredUser();
+  const now = new Date().toISOString();
+  const { data, error } = await _supa
+    .from(PREVIEW_CALL_TABLE)
+    .insert({
+      username: user.username || 'Anonimo',
+      plano: user.plano || '',
+      sessao_id: getAnalyticsSessionId(),
+      ip,
+      status: 'aguardando',
+      meet_url: PREVIEW_CALL_MEET_URL,
+      created_at: now,
+      updated_at: now
+    })
+    .select('*')
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+function applyPreviewCallStatus(record) {
+  previewCallRecord = record;
+
+  if (!record) {
+    return;
+  }
+
+  startPreviewCallTimer(record.created_at);
+  showPreviewCompleteShortcut(false);
+
+  if (record.status === 'liberado' || record.status === 'em_chamada') {
+    setPreviewCallMessage(
+      'Sua chamada esta liberada',
+      'Amanda liberou sua entrada. Toque no botao para entrar no Google Meet.'
+    );
+    setPreviewCallEnterEnabled(true);
+    return;
+  }
+
+  if (record.status === 'finalizado') {
+    setPreviewCallMessage(
+      'Chamada previa finalizada',
+      'Voce ja participou, agora pague a chamada completa.'
+    );
+    setPreviewCallEnterEnabled(false, 'Chamada previa usada');
+    showPreviewCompleteShortcut(true);
+    stopPreviewCallTimers();
+    return;
+  }
+
+  if (record.status === 'cancelado') {
+    setPreviewCallMessage(
+      'Chamada indisponivel agora',
+      'Nao foi possivel liberar sua chamada previa neste momento. Tente novamente mais tarde.'
+    );
+    setPreviewCallEnterEnabled(false, 'Aguardando');
+    stopPreviewCallTimers();
+    return;
+  }
+
+  setPreviewCallMessage(
+    'Sala de espera',
+    'Aguarde, estamos notificando Amanda para entrar.'
+  );
+  setPreviewCallEnterEnabled(false, 'Aguardando liberacao');
+}
+
+async function refreshPreviewCallStatus() {
+  if (!previewCallRecord?.id) {
+    return;
+  }
+
+  const { data, error } = await _supa
+    .from(PREVIEW_CALL_TABLE)
+    .select('*')
+    .eq('id', previewCallRecord.id)
+    .maybeSingle();
+
+  if (error) {
+    console.warn('Nao consegui atualizar a sala de espera:', error);
+    return;
+  }
+
+  applyPreviewCallStatus(data);
+}
+
+function startPreviewCallPolling() {
+  if (previewCallPollTimer) {
+    window.clearInterval(previewCallPollTimer);
+  }
+
+  previewCallPollTimer = window.setInterval(refreshPreviewCallStatus, PREVIEW_CALL_POLL_MS);
+}
+
+async function openPreviewCallRoom() {
+  const modal = document.getElementById('preview-call-modal');
+
+  if (!modal) {
+    return;
+  }
+
+  modal.hidden = false;
+  hideFloatingOfferPanel();
+  stopPreviewCallTimers();
+  setPreviewCallMessage('Sala de espera', 'Aguarde, estamos notificando Amanda para entrar.');
+  setPreviewCallEnterEnabled(false, 'Preparando...');
+  showPreviewCompleteShortcut(false);
+
+  try {
+    trackEvent('abriu_chamada_previa', {
+      alvo_tipo: 'chamada_previa',
+      alvo_titulo: 'Sala de espera'
+    });
+
+    const ip = getPreviewCallIpKey(await getClientIp());
+    const finishedCall = await getFinishedPreviewCallByIp(ip);
+
+    if (finishedCall) {
+      trackEvent('chamada_previa_repetida', {
+        alvo_tipo: 'chamada_previa',
+        alvo_titulo: 'IP ja participou'
+      });
+      applyPreviewCallStatus({
+        ...finishedCall,
+        ip,
+        status: 'finalizado'
+      });
+      return;
+    }
+
+    let activeCall = await getActivePreviewCallByIp(ip);
+
+    if (!activeCall) {
+      activeCall = await createPreviewCall(ip);
+      trackEvent('entrou_fila_chamada_previa', {
+        alvo_tipo: 'chamada_previa',
+        alvo_titulo: 'Aguardando Amanda'
+      });
+    }
+
+    applyPreviewCallStatus(activeCall);
+    startPreviewCallPolling();
+  } catch (error) {
+    console.error('Erro ao abrir chamada previa:', error);
+    setPreviewCallMessage(
+      'Nao consegui abrir a sala',
+      'Atualize a pagina e tente novamente em alguns segundos.'
+    );
+    setPreviewCallEnterEnabled(false, 'Indisponivel');
+  }
+}
+
+function closePreviewCallRoom() {
+  const modal = document.getElementById('preview-call-modal');
+
+  stopPreviewCallTimers();
+
+  if (modal) {
+    modal.hidden = true;
+  }
+
+  showFloatingOfferPanel();
+}
+
+async function enterPreviewCall() {
+  if (!previewCallRecord?.id) {
+    return;
+  }
+
+  const meetUrl = previewCallRecord.meet_url || PREVIEW_CALL_MEET_URL;
+  const analyticsPromise = trackEvent('clicou_entrar_chamada_previa', {
+    alvo_tipo: 'chamada_previa',
+    alvo_titulo: 'Entrar no Meet',
+    alvo_url: meetUrl
+  });
+
+  _supa
+    .from(PREVIEW_CALL_TABLE)
+    .update({
+      status: 'em_chamada',
+      entrou_em: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', previewCallRecord.id)
+    .then(({ error }) => {
+      if (error) {
+        console.warn('Nao consegui marcar entrada na chamada:', error);
+      }
+    });
+
+  waitBrieflyForAnalytics(analyticsPromise).finally(() => {
+    window.location.href = meetUrl;
+  });
+}
+
+function openFullCallModal() {
+  const modal = document.getElementById('full-call-modal');
+
+  if (!modal) {
+    return;
+  }
+
+  closePreviewCallRoom();
+  modal.hidden = false;
+  hideFloatingOfferPanel();
+  trackEvent('abriu_chamada_completa', {
+    alvo_tipo: 'chamada_completa',
+    alvo_titulo: 'Escolha de tempo'
+  });
+}
+
+function closeFullCallModal() {
+  const modal = document.getElementById('full-call-modal');
+
+  if (modal) {
+    modal.hidden = true;
+  }
+
+  showFloatingOfferPanel();
+}
+
+function setupCallHandlers() {
+  const previewEnter = document.getElementById('preview-call-enter');
+  const fullSelect = document.getElementById('full-call-select');
+  const fullCheckout = document.getElementById('full-call-checkout');
+
+  if (previewEnter) {
+    previewEnter.addEventListener('click', () => {
+      if (!previewEnter.disabled) {
+        enterPreviewCall();
+      }
+    });
+  }
+
+  if (fullSelect && fullCheckout) {
+    fullSelect.addEventListener('change', () => {
+      const selectedOption = getFullCallOption(fullSelect.value);
+
+      fullCheckout.disabled = !selectedOption;
+      fullCheckout.classList.toggle('is-ready', Boolean(selectedOption));
+
+      if (selectedOption) {
+        trackEvent('selecionou_chamada_completa', {
+          alvo_tipo: 'checkout_chamada',
+          alvo_titulo: selectedOption.label,
+          alvo_url: selectedOption.url
+        });
+      }
+    });
+
+    fullCheckout.addEventListener('click', () => {
+      const selectedOption = getFullCallOption(fullSelect.value);
+
+      if (!selectedOption || fullCheckout.disabled) {
+        return;
+      }
+
+      const analyticsPromise = trackEvent('clicou_pagar_chamada_completa', {
+        alvo_tipo: 'checkout_chamada',
+        alvo_titulo: selectedOption.label,
+        alvo_url: selectedOption.url
+      });
+
+      waitBrieflyForAnalytics(analyticsPromise).finally(() => {
+        window.location.href = selectedOption.url;
+      });
+    });
+  }
 }
 
 function getPreviewSeconds() {
@@ -1710,6 +2124,7 @@ async function postComment() {
 
 document.addEventListener('DOMContentLoaded', () => {
   setupVipCheckoutHandlers();
+  setupCallHandlers();
 
   const commentText = document.getElementById('comment-text');
 
