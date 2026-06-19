@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sala virtual</title>
+  <link rel="stylesheet" href="style.css?v=20260619-call-room" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body class="virtual-room-page">
+  <nav class="navbar analytics-navbar">
+    <span class="navbar-brand">Sala virtual</span>
+    <div class="analytics-nav-actions">
+      <button class="btn-secondary" type="button" onclick="window.location.href='home.html'">
+        Voltar
+      </button>
+      <button class="btn-logout" type="button" onclick="doLogout()">
+        Sair
+      </button>
+    </div>
+  </nav>
+
+  <main class="virtual-room-shell">
+    <section class="analytics-hero">
+      <div>
+        <span class="analytics-kicker">Chamada previa</span>
+        <h1>Fila ao vivo</h1>
+        <p>
+          Libere uma pessoa por vez. Quando finalizar, esse IP nao consegue participar da previa novamente.
+        </p>
+      </div>
+      <div class="analytics-actions">
+        <button class="btn-secondary" id="room-alerts" type="button">
+          Ativar alerta
+        </button>
+        <button class="btn-secondary" id="room-refresh" type="button">
+          Atualizar
+        </button>
+        <a
+          class="btn-primary room-meet-link"
+          href="https://meet.google.com/xso-udcm-kgc"
+          target="_blank"
+          rel="noopener"
+        >
+          Abrir Meet
+        </a>
+      </div>
+    </section>
+
+    <p class="analytics-status" id="room-status">
+      Carregando fila...
+    </p>
+
+    <section class="virtual-room-grid" id="room-list"></section>
+
+    <section class="analytics-denied" id="room-denied" hidden>
+      <h2>Acesso restrito</h2>
+      <p>Entre com um usuario de plano admin para controlar a sala virtual.</p>
+      <button class="btn-primary" type="button" onclick="window.location.href='home.html'">
+        Voltar
+      </button>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js?v=20260617-analytics"></script>
+  <script src="auth.js?v=20260617-analytics"></script>
+  <script src="sala-virtual.js?v=20260619-call-room"></script>
+</body>
+</html>
