@@ -90,7 +90,7 @@ const PREVIEW_CALL_TEST_IPS = ['177.10.146.100'];
 const PRESENCE_TABLE = 'sala_status';
 const PRESENCE_KEY = 'amanda';
 const PRESENCE_POLL_MS = 15000;
-const PRESENCE_ONLINE_WINDOW_MS = 45000;
+const PRESENCE_ONLINE_WINDOW_MS = 180000;
 const FULL_CALL_OPTIONS = [
   {
     value: '5_min',

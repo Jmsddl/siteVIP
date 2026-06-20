@@ -1,4 +1,4 @@
-const CACHE_NAME = 'amanda-vip-v20260620-presence-pwa';
+const CACHE_NAME = 'amanda-vip-v20260620-presence-stable';
 const APP_SHELL = [
   './',
   './index.html',

@@ -5,7 +5,7 @@ const ROOM_REFRESH_MS = 4000;
 const ROOM_ACTIVE_STATUSES = ['aguardando', 'liberado', 'em_chamada'];
 const ROOM_PRESENCE_TABLE = 'sala_status';
 const ROOM_PRESENCE_KEY = 'amanda';
-const ROOM_PRESENCE_HEARTBEAT_MS = 15000;
+const ROOM_PRESENCE_HEARTBEAT_MS = 10000;
 const ROOM_ORIGINAL_TITLE = document.title;
 
 let roomRows = [];
@@ -220,17 +220,31 @@ async function sendRoomPresence(isOnline = true) {
   }
 
   const now = new Date().toISOString();
-  const { error } = await _supa
+  const payload = {
+    chave: ROOM_PRESENCE_KEY,
+    online: Boolean(isOnline),
+    heartbeat_em: now,
+    updated_at: now
+  };
+  const { data, error } = await _supa
     .from(ROOM_PRESENCE_TABLE)
-    .upsert({
-      chave: ROOM_PRESENCE_KEY,
-      online: Boolean(isOnline),
-      heartbeat_em: now,
-      updated_at: now
-    }, { onConflict: 'chave' });
+    .update(payload)
+    .eq('chave', ROOM_PRESENCE_KEY)
+    .select('chave');
 
   if (error) {
     console.warn('Nao consegui atualizar presenca online:', error.message || error);
+    return;
+  }
+
+  if (!data?.length) {
+    const { error: insertError } = await _supa
+      .from(ROOM_PRESENCE_TABLE)
+      .insert(payload);
+
+    if (insertError) {
+      console.warn('Nao consegui criar presenca online:', insertError.message || insertError);
+    }
   }
 }
 
@@ -249,8 +263,12 @@ function stopRoomPresence() {
     window.clearInterval(roomPresenceTimer);
     roomPresenceTimer = null;
   }
+}
 
-  sendRoomPresence(false);
+function refreshRoomPresenceNow() {
+  if (isRoomAdmin()) {
+    sendRoomPresence(true);
+  }
 }
 
 function renderRoomRows() {
@@ -406,6 +424,13 @@ function setupVirtualRoom() {
 
   document.getElementById('room-refresh')?.addEventListener('click', loadRoomRows);
   document.getElementById('room-alerts')?.addEventListener('click', enableRoomAlerts);
+  window.addEventListener('focus', refreshRoomPresenceNow);
+  window.addEventListener('pageshow', refreshRoomPresenceNow);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      refreshRoomPresenceNow();
+    }
+  });
 
   startRoomPresence();
   loadRoomRows();
