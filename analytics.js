@@ -90,7 +90,14 @@ function eventLabel(evento) {
     reabriu_janela_valores: 'Reabriu janelinha',
     fechou_midia: 'Fechou midia',
     selecionou_plano_vip: 'Escolheu plano VIP',
-    clicou_liberar_vip: 'Clicou em Liberar VIP'
+    clicou_liberar_vip: 'Clicou em Liberar VIP',
+    abriu_chamada_previa: 'Abriu chamada previa',
+    entrou_fila_chamada_previa: 'Entrou na fila da previa',
+    chamada_previa_repetida: 'Tentou repetir previa',
+    clicou_entrar_chamada_previa: 'Entrou no Meet da previa',
+    abriu_chamada_completa: 'Abriu chamada completa',
+    selecionou_chamada_completa: 'Escolheu chamada completa',
+    clicou_pagar_chamada_completa: 'Clicou para pagar chamada'
   };
 
   return labels[evento] || evento || 'Evento';

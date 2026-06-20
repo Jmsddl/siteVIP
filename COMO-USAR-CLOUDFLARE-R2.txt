@@ -41,3 +41,23 @@ Se voce preferir Cloudflare Pages:
 - Framework preset: None
 - Build command: vazio
 - Build output directory: .
+
+PLANOS COM EXPIRACAO AUTOMATICA
+
+Rode primeiro o arquivo SUPABASE-EXPIRACAO-VIP.sql no SQL Editor do Supabase.
+
+Depois, para criar ou renovar usuarios:
+
+1 dia:
+select public.criar_ou_renovar_usuario('cliente1', 'senha123', '1_dia', 1);
+
+7 dias:
+select public.criar_ou_renovar_usuario('cliente1', 'senha123', '7_dias', 7);
+
+30 dias:
+select public.criar_ou_renovar_usuario('cliente1', 'senha123', '30_dias', 30);
+
+3 meses:
+select public.criar_ou_renovar_usuario('cliente1', 'senha123', '3_meses', 90);
+
+Quando vencer, o login bloqueia automaticamente. Se a pessoa estiver com a pagina aberta, o site verifica a sessao a cada 30 segundos e volta para o login quando passar do horario.
