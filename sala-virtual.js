@@ -1,6 +1,7 @@
 const ROOM_ADMIN_PLAN = 'admin';
 const ROOM_TABLE = 'chamadas_previas';
-const ROOM_MEET_URL = 'https://meet.google.com/xso-udcm-kgc';
+const ROOM_MESSAGES_TABLE = 'chamada_mensagens';
+const ROOM_VIDEO_BASE_URL = 'https://meet.jit.si';
 const ROOM_REFRESH_MS = 4000;
 const ROOM_ACTIVE_STATUSES = ['aguardando', 'liberado', 'em_chamada'];
 const ROOM_PRESENCE_TABLE = 'sala_status';
@@ -17,6 +18,9 @@ let roomAudioContext = null;
 let roomInitialLoad = true;
 let roomAlertPopupTimer = null;
 let roomTitleAlertTimer = null;
+let roomRowsRenderKey = '';
+let roomKnownUserMessageIds = new Set();
+let roomMessagesHydrated = false;
 
 function getRoomUser() {
   try {
@@ -38,6 +42,23 @@ function escapeRoom(value) {
     '"': '&quot;',
     "'": '&#39;'
   }[char]));
+}
+
+function getRoomVideoUrl(rowOrId) {
+  const existingUrl = typeof rowOrId === 'object' ? rowOrId?.meet_url : '';
+  const id = typeof rowOrId === 'object' ? rowOrId?.id : rowOrId;
+
+  if (existingUrl && String(existingUrl).includes('meet.jit.si')) {
+    return existingUrl;
+  }
+
+  return `${ROOM_VIDEO_BASE_URL}/AmandaVip-${String(id || Date.now()).replace(/[^a-zA-Z0-9]/g, '')}`;
+}
+
+function buildRoomVideoEmbedUrl(rowOrId, displayName = 'Amanda') {
+  const encodedName = encodeURIComponent(displayName);
+
+  return `${getRoomVideoUrl(rowOrId)}#userInfo.displayName="${encodedName}"&config.prejoinPageEnabled=false&config.disableDeepLinking=true`;
 }
 
 function setRoomStatus(message, isError = false) {
@@ -278,6 +299,20 @@ function renderRoomRows() {
     return;
   }
 
+  const renderKey = JSON.stringify(roomRows.map((row) => [
+    row.id,
+    row.status,
+    row.updated_at,
+    row.meet_url
+  ]));
+
+  if (renderKey === roomRowsRenderKey) {
+    loadRoomMessagesForRows();
+    return;
+  }
+
+  roomRowsRenderKey = renderKey;
+
   if (!roomRows.length) {
     container.innerHTML = `
       <div class="virtual-room-empty">
@@ -291,6 +326,7 @@ function renderRoomRows() {
     const isWaiting = row.status === 'aguardando';
     const isReleased = row.status === 'liberado';
     const isInCall = row.status === 'em_chamada';
+    const canOpenVideo = isReleased || isInCall;
 
     return `
       <article class="virtual-room-card">
@@ -309,6 +345,27 @@ function renderRoomRows() {
           <span>Entrou: ${escapeRoom(formatRoomDate(row.created_at))}</span>
           <span>Espera: ${escapeRoom(formatRoomWait(row.created_at))}</span>
         </div>
+        <div class="room-chat-box">
+          <div class="room-chat-messages" id="room-chat-${escapeRoom(row.id)}">
+            Carregando conversa...
+          </div>
+          <form class="room-chat-form" onsubmit="sendRoomMessage(event, '${escapeRoom(row.id)}')">
+            <input
+              type="text"
+              maxlength="500"
+              autocomplete="off"
+              placeholder="Responder mensagem..."
+            />
+            <button type="submit">Enviar</button>
+          </form>
+        </div>
+        <div class="room-video-stage" id="room-video-${escapeRoom(row.id)}" hidden>
+          <iframe
+            title="Videochamada com ${escapeRoom(row.username || 'usuario')}"
+            allow="camera; microphone; fullscreen; display-capture; autoplay"
+            allowfullscreen
+          ></iframe>
+        </div>
         <div class="virtual-room-actions">
           <button
             class="btn-primary"
@@ -317,6 +374,14 @@ function renderRoomRows() {
             ${isWaiting ? '' : 'disabled'}
           >
             Habilitar
+          </button>
+          <button
+            class="btn-secondary"
+            type="button"
+            onclick="openAdminVideoCall('${escapeRoom(row.id)}')"
+            ${canOpenVideo ? '' : 'disabled'}
+          >
+            Abrir video aqui
           </button>
           <button
             class="btn-secondary"
@@ -338,6 +403,89 @@ function renderRoomRows() {
       </article>
     `;
   }).join('');
+
+  loadRoomMessagesForRows();
+}
+
+function renderRoomChatMessages(chamadaId, messages) {
+  const container = document.getElementById(`room-chat-${chamadaId}`);
+
+  if (!container) {
+    return;
+  }
+
+  if (!messages.length) {
+    container.innerHTML = '<span class="room-chat-empty">Nenhuma mensagem ainda.</span>';
+    return;
+  }
+
+  container.innerHTML = messages.map((message) => {
+    const mine = message.autor_tipo === 'admin';
+    const system = message.autor_tipo === 'sistema';
+    const time = message.created_at
+      ? new Date(message.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      : '';
+
+    if (system) {
+      return `
+        <div class="room-chat-system">
+          ${escapeRoom(message.texto || '')}
+        </div>
+      `;
+    }
+
+    return `
+      <div class="room-chat-message ${mine ? 'is-admin' : 'is-user'}">
+        <span>${escapeRoom(message.texto || '')}</span>
+        <small>${escapeRoom(time)}</small>
+      </div>
+    `;
+  }).join('');
+  container.scrollTop = container.scrollHeight;
+}
+
+async function loadRoomMessagesForRows() {
+  if (!roomRows.length) {
+    return;
+  }
+
+  const newUserMessages = [];
+
+  await Promise.all(roomRows.map(async (row) => {
+    const { data, error } = await _supa
+      .from(ROOM_MESSAGES_TABLE)
+      .select('*')
+      .eq('chamada_id', row.id)
+      .order('created_at', { ascending: true })
+      .limit(200);
+
+    if (error) {
+      console.warn('Nao consegui carregar mensagens:', error.message || error);
+      return;
+    }
+
+    const messages = data || [];
+
+    messages.forEach((message) => {
+      if (message.autor_tipo !== 'usuario' || !message.id) {
+        return;
+      }
+
+      if (!roomKnownUserMessageIds.has(message.id)) {
+        newUserMessages.push(message.id);
+      }
+
+      roomKnownUserMessageIds.add(message.id);
+    });
+
+    renderRoomChatMessages(row.id, messages);
+  }));
+
+  if (roomMessagesHydrated && newUserMessages.length) {
+    notifyRoomAlert(newUserMessages.length);
+  }
+
+  roomMessagesHydrated = true;
 }
 
 async function loadRoomRows() {
@@ -379,26 +527,101 @@ async function updatePreviewCall(id, fields) {
   loadRoomRows();
 }
 
-function releasePreviewCall(id) {
-  updatePreviewCall(id, {
-    status: 'liberado',
-    meet_url: ROOM_MEET_URL,
-    liberado_em: new Date().toISOString()
-  });
+async function insertRoomSystemMessage(chamadaId, text) {
+  const { error } = await _supa
+    .from(ROOM_MESSAGES_TABLE)
+    .insert({
+      chamada_id: chamadaId,
+      autor_tipo: 'sistema',
+      autor_nome: 'Sistema',
+      texto: text
+    });
+
+  if (error) {
+    console.warn('Nao consegui inserir mensagem do sistema:', error.message || error);
+  }
 }
 
-function finishPreviewCall(id) {
-  updatePreviewCall(id, {
+async function sendRoomMessage(event, chamadaId) {
+  event.preventDefault();
+
+  const input = event.target.querySelector('input');
+  const text = input?.value.trim();
+
+  if (!text) {
+    return;
+  }
+
+  if (input) {
+    input.value = '';
+  }
+
+  const { error } = await _supa
+    .from(ROOM_MESSAGES_TABLE)
+    .insert({
+      chamada_id: chamadaId,
+      autor_tipo: 'admin',
+      autor_nome: 'Amanda',
+      texto: text
+    });
+
+  if (error) {
+    console.error('Erro ao enviar resposta:', error);
+    alert('Nao consegui enviar a mensagem agora.');
+    return;
+  }
+
+  loadRoomMessagesForRows();
+}
+
+function openAdminVideoCall(id) {
+  const row = roomRows.find((item) => item.id === id);
+  const stage = document.getElementById(`room-video-${id}`);
+  const frame = stage?.querySelector('iframe');
+
+  if (!stage || !frame) {
+    return;
+  }
+
+  frame.src = buildRoomVideoEmbedUrl(row || id, 'Amanda');
+  stage.hidden = false;
+  stage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function releasePreviewCall(id) {
+  const videoUrl = getRoomVideoUrl(id);
+
+  await updatePreviewCall(id, {
+    status: 'liberado',
+    meet_url: videoUrl,
+    liberado_em: new Date().toISOString()
+  });
+
+  await insertRoomSystemMessage(
+    id,
+    'Amanda liberou a videochamada. Toque em Entrar na videochamada.'
+  );
+  loadRoomMessagesForRows();
+}
+
+async function finishPreviewCall(id) {
+  await updatePreviewCall(id, {
     status: 'finalizado',
     finalizado_em: new Date().toISOString()
   });
+
+  await insertRoomSystemMessage(id, 'Chamada finalizada por Amanda.');
+  loadRoomMessagesForRows();
 }
 
-function cancelPreviewCall(id) {
-  updatePreviewCall(id, {
+async function cancelPreviewCall(id) {
+  await updatePreviewCall(id, {
     status: 'cancelado',
     finalizado_em: new Date().toISOString()
   });
+
+  await insertRoomSystemMessage(id, 'Amanda encerrou esta solicitacao de chamada.');
+  loadRoomMessagesForRows();
 }
 
 function setupVirtualRoom() {

@@ -97,7 +97,9 @@ function eventLabel(evento) {
     clicou_entrar_chamada_previa: 'Entrou no Meet da previa',
     abriu_chamada_completa: 'Abriu chamada completa',
     selecionou_chamada_completa: 'Escolheu chamada completa',
-    clicou_pagar_chamada_completa: 'Clicou para pagar chamada'
+    clicou_pagar_chamada_completa: 'Clicou para pagar chamada',
+    enviou_mensagem_chamada_previa: 'Enviou mensagem no chat',
+    solicitou_videochamada_previa: 'Solicitou videochamada'
   };
 
   return labels[evento] || evento || 'Evento';

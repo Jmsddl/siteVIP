@@ -9,7 +9,7 @@
 
   <link rel="manifest" href="manifest.webmanifest"/>
   <link rel="apple-touch-icon" href="icon-192.png"/>
-  <link rel="stylesheet" href="style.css?v=20260620-presence-stable"/>
+  <link rel="stylesheet" href="style.css?v=20260620-telegram-chat"/>
 
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
@@ -85,12 +85,15 @@
 </div>
 
 <p class="profile-bio">
-  Bem-vindo ao meu paraíso - 21+ <br> <br>
-Aqui você encontra: <br>
-• Galerias íntimas <br>
-• Vídeos explícitos <br>
-• Fantasias secretas realizadas <br>
-• Novidades semanais <br> <br>
+  <strong>🔞 Bem-vindo ao meu paraíso proibido - 21 anos de pura delícia!</strong>
+<br><br>
+Se você chegou até aqui, é porque merece acessar o que mais tenho de melhor. Conteúdos que só meus segredos mais especiais podem ver.
+
+Aqui eu sou completamente sua:
+• Galerias íntimas onde cada detalhe fica à mostra
+• Vídeos exclusivos com meus brinquedos favoritos e sexo explícito.
+• Minhas fantasias mais secretas realizadas apenas para você
+• Conteúdo novo toda semana para nunca te deixar entediado
   <br><br>
  
 </p>
@@ -262,7 +265,7 @@ Aqui você encontra: <br>
     id="preview-call-modal"
     hidden
   >
-    <div class="call-modal-card">
+    <div class="call-modal-card telegram-chat-card">
       <button
         class="call-modal-close"
         type="button"
@@ -271,32 +274,65 @@ Aqui você encontra: <br>
       >
         x
       </button>
-      <span class="call-modal-kicker">Chamada previa</span>
-      <h2 id="preview-call-title">Sala de espera</h2>
-      <p id="preview-call-message">
-        Aguarde, estamos notificando Amanda para entrar.
-      </p>
-      <div class="call-wait-timer">
-        <span>Tempo aguardando</span>
-        <strong id="preview-call-timer">00:00</strong>
+      <div class="telegram-chat-header">
+        <img src="sua-foto.jpg" alt="Amanda" />
+        <div>
+          <strong>Amanda Oliveira</strong>
+          <span id="preview-call-message">Aguardando atendimento</span>
+        </div>
+        <b id="preview-call-timer">00:00</b>
       </div>
-      <button
-        class="btn-primary call-enter-button"
-        id="preview-call-enter"
-        type="button"
-        disabled
-      >
-        Entrar na chamada
-      </button>
-      <button
-        class="btn-secondary call-complete-shortcut"
-        id="preview-call-complete-shortcut"
-        type="button"
-        onclick="openFullCallModal()"
-        hidden
-      >
-        Pagar chamada completa
-      </button>
+
+      <div class="telegram-video-stage" id="preview-video-stage" hidden>
+        <iframe
+          id="preview-video-frame"
+          title="Chamada de video"
+          allow="camera; microphone; fullscreen; display-capture; autoplay"
+          allowfullscreen
+        ></iframe>
+      </div>
+
+      <div class="telegram-chat-messages" id="preview-chat-messages">
+        <div class="telegram-empty">Abrindo conversa...</div>
+      </div>
+
+      <div class="telegram-chat-actions">
+        <button
+          class="btn-secondary call-request-button"
+          id="preview-call-request"
+          type="button"
+        >
+          Solicitar videochamada
+        </button>
+        <button
+          class="btn-primary call-enter-button"
+          id="preview-call-enter"
+          type="button"
+          disabled
+        >
+          Ligar por video
+        </button>
+        <button
+          class="btn-secondary call-complete-shortcut"
+          id="preview-call-complete-shortcut"
+          type="button"
+          onclick="openFullCallModal()"
+          hidden
+        >
+          Pagar chamada completa
+        </button>
+      </div>
+
+      <form class="telegram-chat-form" id="preview-chat-form">
+        <input
+          id="preview-chat-input"
+          type="text"
+          autocomplete="off"
+          maxlength="500"
+          placeholder="Escreva uma mensagem..."
+        />
+        <button type="submit">Enviar</button>
+      </form>
     </div>
   </div>
 
@@ -403,9 +439,9 @@ Aqui você encontra: <br>
 
   <script src="auth.js?v=20260617-analytics"></script>
 
-  <script src="app.js?v=20260620-presence-stable"></script>
+  <script src="app.js?v=20260620-telegram-chat"></script>
 
-  <script src="pwa.js?v=20260620-presence-stable"></script>
+  <script src="pwa.js?v=20260620-telegram-chat"></script>
 
 </body>
 </html>

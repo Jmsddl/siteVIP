@@ -83,8 +83,10 @@ const VIP_CHECKOUT_OPTIONS = [
   }
 ];
 const PREVIEW_CALL_TABLE = 'chamadas_previas';
-const PREVIEW_CALL_MEET_URL = 'https://meet.google.com/xso-udcm-kgc';
+const PREVIEW_CALL_MESSAGES_TABLE = 'chamada_mensagens';
+const PREVIEW_CALL_VIDEO_BASE_URL = 'https://meet.jit.si';
 const PREVIEW_CALL_POLL_MS = 5000;
+const PREVIEW_CHAT_POLL_MS = 3000;
 const PREVIEW_CALL_ACTIVE_STATUSES = ['aguardando', 'liberado', 'em_chamada'];
 const PREVIEW_CALL_TEST_IPS = ['177.10.146.100'];
 const PRESENCE_TABLE = 'sala_status';
@@ -112,8 +114,10 @@ let analyticsIpPromise = null;
 let previewCallRecord = null;
 let previewCallPollTimer = null;
 let previewCallTimer = null;
+let previewChatPollTimer = null;
 let previewCallStartedAt = null;
 let presencePollTimer = null;
+let previewChatLastRenderKey = '';
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -440,6 +444,14 @@ function setPreviewCallMessage(title, message) {
   }
 }
 
+function setPreviewChatStatus(message) {
+  const messageEl = document.getElementById('preview-call-message');
+
+  if (messageEl) {
+    messageEl.textContent = message;
+  }
+}
+
 function setPreviewCallEnterEnabled(enabled, label = 'Entrar na chamada') {
   const button = document.getElementById('preview-call-enter');
 
@@ -464,6 +476,11 @@ function stopPreviewCallTimers() {
   if (previewCallPollTimer) {
     window.clearInterval(previewCallPollTimer);
     previewCallPollTimer = null;
+  }
+
+  if (previewChatPollTimer) {
+    window.clearInterval(previewChatPollTimer);
+    previewChatPollTimer = null;
   }
 
   if (previewCallTimer) {
@@ -515,11 +532,12 @@ async function getFinishedPreviewCallByIp(ip) {
   return data?.[0] || null;
 }
 
-async function getActivePreviewCallByIp(ip) {
+async function getActivePreviewCallByIp(ip, sessionId) {
   const { data, error } = await _supa
     .from(PREVIEW_CALL_TABLE)
     .select('*')
     .eq('ip', ip)
+    .eq('sessao_id', sessionId)
     .in('status', PREVIEW_CALL_ACTIVE_STATUSES)
     .order('created_at', { ascending: false })
     .limit(1);
@@ -534,6 +552,8 @@ async function getActivePreviewCallByIp(ip) {
 async function createPreviewCall(ip) {
   const user = getStoredUser();
   const now = new Date().toISOString();
+  const roomSlug = `AmandaVip-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+  const videoUrl = `${PREVIEW_CALL_VIDEO_BASE_URL}/${roomSlug}`;
   const { data, error } = await _supa
     .from(PREVIEW_CALL_TABLE)
     .insert({
@@ -542,7 +562,7 @@ async function createPreviewCall(ip) {
       sessao_id: getAnalyticsSessionId(),
       ip,
       status: 'aguardando',
-      meet_url: PREVIEW_CALL_MEET_URL,
+      meet_url: videoUrl,
       created_at: now,
       updated_at: now
     })
@@ -556,8 +576,197 @@ async function createPreviewCall(ip) {
   return data;
 }
 
+function getPreviewVideoUrl(record) {
+  if (record?.meet_url && String(record.meet_url).includes('meet.jit.si')) {
+    return record.meet_url;
+  }
+
+  return `${PREVIEW_CALL_VIDEO_BASE_URL}/AmandaVip-${String(record?.id || getAnalyticsSessionId()).replace(/[^a-zA-Z0-9]/g, '')}`;
+}
+
+function buildPreviewVideoEmbedUrl(record) {
+  const user = getStoredUser();
+  const displayName = encodeURIComponent(user.username || 'Convidado');
+  const baseUrl = getPreviewVideoUrl(record);
+
+  return `${baseUrl}#userInfo.displayName="${displayName}"&config.prejoinPageEnabled=false&config.disableDeepLinking=true`;
+}
+
+function renderPreviewChatMessages(messages) {
+  const container = document.getElementById('preview-chat-messages');
+
+  if (!container) {
+    return;
+  }
+
+  const renderKey = JSON.stringify(messages.map((message) => [
+    message.id,
+    message.texto,
+    message.autor_tipo,
+    message.created_at
+  ]));
+
+  if (renderKey === previewChatLastRenderKey) {
+    return;
+  }
+
+  previewChatLastRenderKey = renderKey;
+
+  if (!messages.length) {
+    container.innerHTML = `
+      <div class="telegram-empty">
+        Mande uma mensagem para Amanda ou solicite a chamada de video.
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = messages.map((message) => {
+    const mine = message.autor_tipo === 'usuario';
+    const system = message.autor_tipo === 'sistema';
+    const time = message.created_at
+      ? new Date(message.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      : '';
+
+    if (system) {
+      return `
+        <div class="telegram-system-message">
+          ${escapeHtml(message.texto || '')}
+        </div>
+      `;
+    }
+
+    return `
+      <div class="telegram-message ${mine ? 'is-mine' : 'is-admin'}">
+        <span>${escapeHtml(message.texto || '')}</span>
+        <small>${escapeHtml(time)}</small>
+      </div>
+    `;
+  }).join('');
+  container.scrollTop = container.scrollHeight;
+}
+
+async function loadPreviewChatMessages() {
+  if (!previewCallRecord?.id) {
+    return;
+  }
+
+  const { data, error } = await _supa
+    .from(PREVIEW_CALL_MESSAGES_TABLE)
+    .select('*')
+    .eq('chamada_id', previewCallRecord.id)
+    .order('created_at', { ascending: true })
+    .limit(200);
+
+  if (error) {
+    console.warn('Nao consegui carregar mensagens:', error.message || error);
+    return;
+  }
+
+  renderPreviewChatMessages(data || []);
+}
+
+async function sendPreviewChatMessage(text, authorType = 'usuario') {
+  if (!previewCallRecord?.id || !text.trim()) {
+    return;
+  }
+
+  const user = getStoredUser();
+  const { error } = await _supa
+    .from(PREVIEW_CALL_MESSAGES_TABLE)
+    .insert({
+      chamada_id: previewCallRecord.id,
+      autor_tipo: authorType,
+      autor_nome: authorType === 'usuario' ? (user.username || 'Convidado') : 'Amanda',
+      texto: text.trim()
+    });
+
+  if (error) {
+    console.warn('Nao consegui enviar mensagem:', error.message || error);
+    alert('Nao consegui enviar sua mensagem agora.');
+    return;
+  }
+
+  trackEvent('enviou_mensagem_chamada_previa', {
+    alvo_tipo: 'chat_chamada',
+    alvo_titulo: text.trim().slice(0, 80)
+  });
+  loadPreviewChatMessages();
+}
+
+async function requestPreviewVideoCall() {
+  const button = document.getElementById('preview-call-request');
+
+  if (!previewCallRecord?.id) {
+    return;
+  }
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Video solicitado';
+  }
+
+  await _supa
+    .from(PREVIEW_CALL_TABLE)
+    .update({
+      status: previewCallRecord.status || 'aguardando',
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', previewCallRecord.id);
+
+  await _supa
+    .from(PREVIEW_CALL_MESSAGES_TABLE)
+    .insert({
+      chamada_id: previewCallRecord.id,
+      autor_tipo: 'sistema',
+      autor_nome: 'Sistema',
+      texto: 'Usuario solicitou videochamada.'
+    });
+
+  trackEvent('solicitou_videochamada_previa', {
+    alvo_tipo: 'chat_chamada',
+    alvo_titulo: 'Solicitou videochamada'
+  });
+  loadPreviewChatMessages();
+}
+
+async function ensurePreviewWelcomeMessage(record) {
+  if (!record?.id) {
+    return;
+  }
+
+  const { count, error } = await _supa
+    .from(PREVIEW_CALL_MESSAGES_TABLE)
+    .select('id', { count: 'exact', head: true })
+    .eq('chamada_id', record.id);
+
+  if (error || count) {
+    return;
+  }
+
+  await _supa
+    .from(PREVIEW_CALL_MESSAGES_TABLE)
+    .insert({
+      chamada_id: record.id,
+      autor_tipo: 'sistema',
+      autor_nome: 'Sistema',
+      texto: 'Conversa iniciada. Amanda foi notificada e respondera por aqui.'
+    });
+}
+
+function startPreviewChatPolling() {
+  loadPreviewChatMessages();
+
+  if (previewChatPollTimer) {
+    window.clearInterval(previewChatPollTimer);
+  }
+
+  previewChatPollTimer = window.setInterval(loadPreviewChatMessages, PREVIEW_CHAT_POLL_MS);
+}
+
 function applyPreviewCallStatus(record) {
   previewCallRecord = record;
+  const requestButton = document.getElementById('preview-call-request');
 
   if (!record) {
     return;
@@ -567,40 +776,44 @@ function applyPreviewCallStatus(record) {
   showPreviewCompleteShortcut(false);
 
   if (record.status === 'liberado' || record.status === 'em_chamada') {
-    setPreviewCallMessage(
-      'Sua chamada esta liberada',
-      'Amanda liberou sua entrada. Toque no botao para entrar no Google Meet.'
-    );
-    setPreviewCallEnterEnabled(true);
+    setPreviewChatStatus('Video liberado por Amanda');
+    setPreviewCallEnterEnabled(true, 'Entrar na videochamada');
+    if (requestButton) {
+      requestButton.disabled = true;
+      requestButton.textContent = 'Video liberado';
+    }
     return;
   }
 
   if (record.status === 'finalizado') {
-    setPreviewCallMessage(
-      'Chamada previa finalizada',
-      'Voce ja participou, agora pague a chamada completa.'
-    );
+    setPreviewChatStatus('Chamada previa finalizada');
     setPreviewCallEnterEnabled(false, 'Chamada previa usada');
+    if (requestButton) {
+      requestButton.disabled = true;
+      requestButton.textContent = 'Chamada finalizada';
+    }
     showPreviewCompleteShortcut(true);
     stopPreviewCallTimers();
     return;
   }
 
   if (record.status === 'cancelado') {
-    setPreviewCallMessage(
-      'Chamada indisponivel agora',
-      'Nao foi possivel liberar sua chamada previa neste momento. Tente novamente mais tarde.'
-    );
+    setPreviewChatStatus('Chamada indisponivel agora');
     setPreviewCallEnterEnabled(false, 'Aguardando');
+    if (requestButton) {
+      requestButton.disabled = true;
+      requestButton.textContent = 'Indisponivel';
+    }
     stopPreviewCallTimers();
     return;
   }
 
-  setPreviewCallMessage(
-    'Sala de espera',
-    'Aguarde, estamos notificando Amanda para entrar.'
-  );
-  setPreviewCallEnterEnabled(false, 'Aguardando liberacao');
+  setPreviewChatStatus('Amanda foi notificada');
+  setPreviewCallEnterEnabled(false, 'Aguardando liberacao do video');
+  if (requestButton && requestButton.textContent !== 'Video solicitado') {
+    requestButton.disabled = false;
+    requestButton.textContent = 'Solicitar videochamada';
+  }
 }
 
 async function refreshPreviewCallStatus() {
@@ -640,9 +853,16 @@ async function openPreviewCallRoom() {
   modal.hidden = false;
   hideFloatingOfferPanel();
   stopPreviewCallTimers();
-  setPreviewCallMessage('Sala de espera', 'Aguarde, estamos notificando Amanda para entrar.');
+  previewChatLastRenderKey = '';
+  setPreviewChatStatus('Abrindo conversa...');
   setPreviewCallEnterEnabled(false, 'Preparando...');
   showPreviewCompleteShortcut(false);
+  const requestButton = document.getElementById('preview-call-request');
+
+  if (requestButton) {
+    requestButton.disabled = false;
+    requestButton.textContent = 'Solicitar videochamada';
+  }
 
   try {
     trackEvent('abriu_chamada_previa', {
@@ -650,6 +870,7 @@ async function openPreviewCallRoom() {
       alvo_titulo: 'Sala de espera'
     });
 
+    const sessionId = getAnalyticsSessionId();
     const ip = getPreviewCallIpKey(await getClientIp());
     const finishedCall = isPreviewCallTestIp(ip)
       ? null
@@ -660,6 +881,12 @@ async function openPreviewCallRoom() {
         alvo_tipo: 'chamada_previa',
         alvo_titulo: 'IP ja participou'
       });
+      renderPreviewChatMessages([{
+        id: 'finished',
+        autor_tipo: 'sistema',
+        texto: 'Voce ja participou, agora pague a chamada completa.',
+        created_at: new Date().toISOString()
+      }]);
       applyPreviewCallStatus({
         ...finishedCall,
         ip,
@@ -668,7 +895,7 @@ async function openPreviewCallRoom() {
       return;
     }
 
-    let activeCall = await getActivePreviewCallByIp(ip);
+    let activeCall = await getActivePreviewCallByIp(ip, sessionId);
 
     if (!activeCall) {
       activeCall = await createPreviewCall(ip);
@@ -678,22 +905,31 @@ async function openPreviewCallRoom() {
       });
     }
 
+    await ensurePreviewWelcomeMessage(activeCall);
     applyPreviewCallStatus(activeCall);
     startPreviewCallPolling();
+    startPreviewChatPolling();
   } catch (error) {
     console.error('Erro ao abrir chamada previa:', error);
-    setPreviewCallMessage(
-      'Nao consegui abrir a sala',
-      'Atualize a pagina e tente novamente em alguns segundos.'
-    );
+    setPreviewChatStatus('Nao consegui abrir a conversa');
     setPreviewCallEnterEnabled(false, 'Indisponivel');
   }
 }
 
 function closePreviewCallRoom() {
   const modal = document.getElementById('preview-call-modal');
+  const videoStage = document.getElementById('preview-video-stage');
+  const videoFrame = document.getElementById('preview-video-frame');
 
   stopPreviewCallTimers();
+
+  if (videoFrame) {
+    videoFrame.src = '';
+  }
+
+  if (videoStage) {
+    videoStage.hidden = true;
+  }
 
   if (modal) {
     modal.hidden = true;
@@ -707,11 +943,14 @@ async function enterPreviewCall() {
     return;
   }
 
-  const meetUrl = previewCallRecord.meet_url || PREVIEW_CALL_MEET_URL;
+  const videoStage = document.getElementById('preview-video-stage');
+  const videoFrame = document.getElementById('preview-video-frame');
+  const videoUrl = getPreviewVideoUrl(previewCallRecord);
+  const embedUrl = buildPreviewVideoEmbedUrl(previewCallRecord);
   const analyticsPromise = trackEvent('clicou_entrar_chamada_previa', {
     alvo_tipo: 'chamada_previa',
-    alvo_titulo: 'Entrar no Meet',
-    alvo_url: meetUrl
+    alvo_titulo: 'Entrar na videochamada',
+    alvo_url: videoUrl
   });
 
   _supa
@@ -728,8 +967,19 @@ async function enterPreviewCall() {
       }
     });
 
+  if (videoFrame) {
+    videoFrame.src = embedUrl;
+  }
+
+  if (videoStage) {
+    videoStage.hidden = false;
+    videoStage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  setPreviewChatStatus('Videochamada aberta dentro do site');
+
   waitBrieflyForAnalytics(analyticsPromise).finally(() => {
-    window.location.href = meetUrl;
+    loadPreviewChatMessages();
   });
 }
 
@@ -761,6 +1011,9 @@ function closeFullCallModal() {
 
 function setupCallHandlers() {
   const previewEnter = document.getElementById('preview-call-enter');
+  const previewRequest = document.getElementById('preview-call-request');
+  const previewChatForm = document.getElementById('preview-chat-form');
+  const previewChatInput = document.getElementById('preview-chat-input');
   const fullSelect = document.getElementById('full-call-select');
   const fullCheckout = document.getElementById('full-call-checkout');
 
@@ -769,6 +1022,28 @@ function setupCallHandlers() {
       if (!previewEnter.disabled) {
         enterPreviewCall();
       }
+    });
+  }
+
+  if (previewRequest) {
+    previewRequest.addEventListener('click', () => {
+      if (!previewRequest.disabled) {
+        requestPreviewVideoCall();
+      }
+    });
+  }
+
+  if (previewChatForm && previewChatInput) {
+    previewChatForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const text = previewChatInput.value.trim();
+
+      if (!text) {
+        return;
+      }
+
+      previewChatInput.value = '';
+      sendPreviewChatMessage(text);
     });
   }
 
