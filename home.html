@@ -4,9 +4,12 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="theme-color" content="#0a0a0a"/>
   <title>Home</title>
 
-  <link rel="stylesheet" href="style.css?v=20260619-call-room"/>
+  <link rel="manifest" href="manifest.webmanifest"/>
+  <link rel="apple-touch-icon" href="icon-192.png"/>
+  <link rel="stylesheet" href="style.css?v=20260620-presence-pwa"/>
 
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
@@ -72,13 +75,25 @@
   AMANDA OLIVEIRA
 </h2>
 
+<div
+  class="profile-presence is-offline"
+  id="profile-presence"
+  aria-live="polite"
+>
+  <span class="presence-dot"></span>
+  <strong id="profile-presence-text">Amanda esta offline</strong>
+</div>
+
 <p class="profile-bio">
-Bem-vindo ao meu paraíso - 21+ <br> <br>
-Aqui você encontra: <br>
-• Galerias íntimas <br>
-• Vídeos explícitos com brinquedos <br>
-• Fantasias secretas realizadas <br>
-• Novidades semanais <br> <br>
+  <strong>🔞 Bem-vindo ao meu paraíso proibido - 21 anos de pura delícia!</strong>
+<br><br>
+Se você chegou até aqui, é porque merece acessar o que mais tenho de melhor. Conteúdos que só meus segredos mais especiais podem ver.
+
+Aqui eu sou completamente sua:
+• Galerias íntimas onde cada detalhe fica à mostra
+• Vídeos exclusivos com meus brinquedos favoritos e sexo explícito.
+• Minhas fantasias mais secretas realizadas apenas para você
+• Conteúdo novo toda semana para nunca te deixar entediado
   <br><br>
  
 </p>
@@ -391,7 +406,9 @@ Aqui você encontra: <br>
 
   <script src="auth.js?v=20260617-analytics"></script>
 
-  <script src="app.js?v=20260619-call-room"></script>
+  <script src="app.js?v=20260620-presence-pwa"></script>
+
+  <script src="pwa.js?v=20260620-presence-pwa"></script>
 
 </body>
 </html>

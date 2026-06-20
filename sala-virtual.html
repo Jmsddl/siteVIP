@@ -3,8 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0a0a0a" />
   <title>Sala virtual</title>
-  <link rel="stylesheet" href="style.css?v=20260619-call-room" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="stylesheet" href="style.css?v=20260620-presence-pwa" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
@@ -52,6 +55,12 @@
       Carregando fila...
     </p>
 
+    <div class="room-presence-card" id="room-presence-card">
+      <span class="presence-dot"></span>
+      <strong>Amanda online</strong>
+      <small>Enquanto esta pagina estiver aberta, os usuarios veem voce online.</small>
+    </div>
+
     <section class="virtual-room-grid" id="room-list"></section>
 
     <section class="analytics-denied" id="room-denied" hidden>
@@ -63,9 +72,20 @@
     </section>
   </main>
 
+  <div class="room-alert-popup" id="room-alert-popup" hidden>
+    <div>
+      <strong>Nova pessoa na sala</strong>
+      <span id="room-alert-popup-text">Tem alguem aguardando chamada previa.</span>
+    </div>
+    <button class="btn-primary" type="button" onclick="hideRoomAlertPopup()">
+      Ver fila
+    </button>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase-config.js?v=20260617-analytics"></script>
   <script src="auth.js?v=20260617-analytics"></script>
-  <script src="sala-virtual.js?v=20260619-call-room"></script>
+  <script src="sala-virtual.js?v=20260620-presence-pwa"></script>
+  <script src="pwa.js?v=20260620-presence-pwa"></script>
 </body>
 </html>

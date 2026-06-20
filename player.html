@@ -3,8 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0a0a" />
   <title>Player</title>
-  <link rel="stylesheet" href="style.css?v=20260618-reproduzir" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="stylesheet" href="style.css?v=20260620-presence-pwa" />
 </head>
 <body class="standalone-player-page">
   <main class="standalone-player-shell">
@@ -51,18 +54,22 @@
           <span class="vip-lock-kicker">Acesso VIP</span>
           <h3>Conteudo bloqueado</h3>
           <p id="player-lock-text">
-            Entre em contato para assinar o VIP e continuar assistindo.
+            Assine o VIP e continue assistindo.
           </p>
-          <a
-            class="vip-lock-button"
-            id="player-lock-telegram"
-            href="#"
-            target="_blank"
-            rel="noopener"
-            hidden
-          >
-            Chamar no WhatsApp
-          </a>
+          <div class="vip-checkout-box">
+            <label class="vip-checkout-label" for="player-plan-select">
+              Escolha seu tempo de acesso
+            </label>
+            <select class="vip-plan-select" id="player-plan-select" aria-label="Escolha o tempo de acesso">
+              <option value="">Selecione uma opcao</option>
+              <option value="7_dias">7 dias de acesso</option>
+              <option value="30_dias">30 dias de acesso</option>
+              <option value="3_meses">3 meses de acesso</option>
+            </select>
+            <button class="vip-lock-button vip-checkout-button" id="player-checkout-button" type="button" disabled>
+              Liberar VIP
+            </button>
+          </div>
           <button class="standalone-player-back" type="button" onclick="goBackToHome()">
             Fechar
           </button>
@@ -122,6 +129,9 @@
     </section>
   </main>
 
-  <script src="player.js?v=20260618-reproduzir"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js?v=20260619-video-analytics"></script>
+  <script src="player.js?v=20260619-video-analytics"></script>
+  <script src="pwa.js?v=20260620-presence-pwa"></script>
 </body>
 </html>

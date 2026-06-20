@@ -3,13 +3,20 @@ const ROOM_TABLE = 'chamadas_previas';
 const ROOM_MEET_URL = 'https://meet.google.com/xso-udcm-kgc';
 const ROOM_REFRESH_MS = 4000;
 const ROOM_ACTIVE_STATUSES = ['aguardando', 'liberado', 'em_chamada'];
+const ROOM_PRESENCE_TABLE = 'sala_status';
+const ROOM_PRESENCE_KEY = 'amanda';
+const ROOM_PRESENCE_HEARTBEAT_MS = 15000;
+const ROOM_ORIGINAL_TITLE = document.title;
 
 let roomRows = [];
 let roomTimer = null;
+let roomPresenceTimer = null;
 let roomKnownWaitingIds = new Set();
 let roomAlertsEnabled = false;
 let roomAudioContext = null;
 let roomInitialLoad = true;
+let roomAlertPopupTimer = null;
+let roomTitleAlertTimer = null;
 
 function getRoomUser() {
   try {
@@ -91,22 +98,74 @@ function playRoomAlert() {
 
   try {
     roomAudioContext = roomAudioContext || new AudioContext();
-    const oscillator = roomAudioContext.createOscillator();
-    const gain = roomAudioContext.createGain();
+    [0, 0.35, 0.7].forEach((offset) => {
+      const oscillator = roomAudioContext.createOscillator();
+      const gain = roomAudioContext.createGain();
 
-    oscillator.type = 'sine';
-    oscillator.frequency.value = 880;
-    gain.gain.value = 0.08;
-    oscillator.connect(gain);
-    gain.connect(roomAudioContext.destination);
-    oscillator.start();
-    oscillator.stop(roomAudioContext.currentTime + 0.28);
+      oscillator.type = 'sine';
+      oscillator.frequency.value = 880;
+      gain.gain.value = 0.1;
+      oscillator.connect(gain);
+      gain.connect(roomAudioContext.destination);
+      oscillator.start(roomAudioContext.currentTime + offset);
+      oscillator.stop(roomAudioContext.currentTime + offset + 0.22);
+    });
   } catch (error) {
     console.warn('Nao consegui tocar alerta:', error);
   }
 }
 
+function showRoomAlertPopup(count) {
+  const popup = document.getElementById('room-alert-popup');
+  const text = document.getElementById('room-alert-popup-text');
+
+  if (!popup) {
+    return;
+  }
+
+  if (text) {
+    text.textContent = `${count} pessoa(s) aguardando chamada previa agora.`;
+  }
+
+  popup.hidden = false;
+
+  if (roomAlertPopupTimer) {
+    window.clearTimeout(roomAlertPopupTimer);
+  }
+
+  roomAlertPopupTimer = window.setTimeout(hideRoomAlertPopup, 14000);
+}
+
+function hideRoomAlertPopup() {
+  const popup = document.getElementById('room-alert-popup');
+
+  if (popup) {
+    popup.hidden = true;
+  }
+
+  if (roomTitleAlertTimer) {
+    window.clearInterval(roomTitleAlertTimer);
+    roomTitleAlertTimer = null;
+    document.title = ROOM_ORIGINAL_TITLE;
+  }
+}
+
+function flashRoomTitle(count) {
+  let visible = false;
+
+  if (roomTitleAlertTimer) {
+    window.clearInterval(roomTitleAlertTimer);
+  }
+
+  roomTitleAlertTimer = window.setInterval(() => {
+    visible = !visible;
+    document.title = visible ? `(${count}) Nova chamada!` : ROOM_ORIGINAL_TITLE;
+  }, 900);
+}
+
 function notifyRoomAlert(count) {
+  showRoomAlertPopup(count);
+  flashRoomTitle(count);
   playRoomAlert();
 
   if ('Notification' in window && Notification.permission === 'granted') {
@@ -153,6 +212,45 @@ function watchNewWaitingRows(rows) {
 
   roomKnownWaitingIds = waitingIds;
   roomInitialLoad = false;
+}
+
+async function sendRoomPresence(isOnline = true) {
+  if (typeof _supa === 'undefined' || !_supa) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const { error } = await _supa
+    .from(ROOM_PRESENCE_TABLE)
+    .upsert({
+      chave: ROOM_PRESENCE_KEY,
+      online: Boolean(isOnline),
+      heartbeat_em: now,
+      updated_at: now
+    }, { onConflict: 'chave' });
+
+  if (error) {
+    console.warn('Nao consegui atualizar presenca online:', error.message || error);
+  }
+}
+
+function startRoomPresence() {
+  sendRoomPresence(true);
+
+  if (roomPresenceTimer) {
+    window.clearInterval(roomPresenceTimer);
+  }
+
+  roomPresenceTimer = window.setInterval(() => sendRoomPresence(true), ROOM_PRESENCE_HEARTBEAT_MS);
+}
+
+function stopRoomPresence() {
+  if (roomPresenceTimer) {
+    window.clearInterval(roomPresenceTimer);
+    roomPresenceTimer = null;
+  }
+
+  sendRoomPresence(false);
 }
 
 function renderRoomRows() {
@@ -309,6 +407,7 @@ function setupVirtualRoom() {
   document.getElementById('room-refresh')?.addEventListener('click', loadRoomRows);
   document.getElementById('room-alerts')?.addEventListener('click', enableRoomAlerts);
 
+  startRoomPresence();
   loadRoomRows();
   roomTimer = window.setInterval(loadRoomRows, ROOM_REFRESH_MS);
 }
@@ -317,6 +416,16 @@ window.addEventListener('beforeunload', () => {
   if (roomTimer) {
     window.clearInterval(roomTimer);
   }
+
+  if (roomAlertPopupTimer) {
+    window.clearTimeout(roomAlertPopupTimer);
+  }
+
+  if (roomTitleAlertTimer) {
+    window.clearInterval(roomTitleAlertTimer);
+  }
+
+  stopRoomPresence();
 });
 
 document.addEventListener('DOMContentLoaded', setupVirtualRoom);

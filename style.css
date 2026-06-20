@@ -215,6 +215,43 @@ body.standalone-player-page {
   font-weight: 700;
 }
 
+.profile-presence {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 8px 13px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.presence-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #777;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.06);
+}
+
+.profile-presence.is-online {
+  color: #84ffb5;
+  border-color: rgba(45, 220, 126, 0.32);
+  background: rgba(45, 220, 126, 0.08);
+}
+
+.profile-presence.is-online .presence-dot,
+.room-presence-card .presence-dot {
+  background: #2ee67b;
+  box-shadow: 0 0 0 4px rgba(46, 230, 123, 0.14), 0 0 18px rgba(46, 230, 123, 0.75);
+}
+
+.profile-presence.is-offline .presence-dot {
+  background: #777;
+}
+
 .profile-bio {
   color: var(--text-muted);
   text-align: center;
@@ -1747,6 +1784,26 @@ body.modal-open {
   gap: 14px;
 }
 
+.room-presence-card {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+  border: 1px solid rgba(46, 230, 123, 0.22);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: rgba(46, 230, 123, 0.08);
+}
+
+.room-presence-card strong {
+  color: #84ffb5;
+}
+
+.room-presence-card small {
+  color: var(--text-muted);
+}
+
 .virtual-room-empty,
 .virtual-room-card {
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -1828,6 +1885,57 @@ body.modal-open {
   white-space: nowrap;
 }
 
+.room-alert-popup {
+  position: fixed;
+  right: 18px;
+  top: 18px;
+  z-index: 950;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: min(460px, calc(100vw - 28px));
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 16px;
+  padding: 16px;
+  background: linear-gradient(135deg, rgba(233, 30, 140, 0.98), rgba(111, 36, 255, 0.96));
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.45);
+  animation: roomAlertIn 0.28s ease-out;
+}
+
+.room-alert-popup[hidden] {
+  display: none !important;
+}
+
+.room-alert-popup strong {
+  display: block;
+  margin-bottom: 3px;
+  color: #fff;
+  font-size: 1rem;
+}
+
+.room-alert-popup span {
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 0.9rem;
+}
+
+.room-alert-popup .btn-primary {
+  flex: 0 0 auto;
+  background: #fff;
+  color: #181818;
+  padding: 11px 16px;
+}
+
+@keyframes roomAlertIn {
+  from {
+    transform: translateY(-12px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
 @media (max-width: 900px) {
   .analytics-hero {
     align-items: flex-start;
@@ -1900,6 +2008,19 @@ body.modal-open {
 
   .virtual-room-actions button,
   .room-meet-link {
+    width: 100%;
+  }
+
+  .room-alert-popup {
+    left: 14px;
+    right: 14px;
+    top: 14px;
+    width: auto;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .room-alert-popup .btn-primary {
     width: 100%;
   }
 }
