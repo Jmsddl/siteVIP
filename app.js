@@ -86,6 +86,11 @@ const PREVIEW_CALL_TABLE = 'chamadas_previas';
 const PREVIEW_CALL_MEET_URL = 'https://meet.google.com/xso-udcm-kgc';
 const PREVIEW_CALL_POLL_MS = 5000;
 const PREVIEW_CALL_ACTIVE_STATUSES = ['aguardando', 'liberado', 'em_chamada'];
+const PREVIEW_CALL_TEST_IPS = ['177.10.146.100'];
+const PRESENCE_TABLE = 'sala_status';
+const PRESENCE_KEY = 'amanda';
+const PRESENCE_POLL_MS = 15000;
+const PRESENCE_ONLINE_WINDOW_MS = 45000;
 const FULL_CALL_OPTIONS = [
   {
     value: '5_min',
@@ -108,6 +113,7 @@ let previewCallRecord = null;
 let previewCallPollTimer = null;
 let previewCallTimer = null;
 let previewCallStartedAt = null;
+let presencePollTimer = null;
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -490,6 +496,10 @@ function getPreviewCallIpKey(ip) {
   return ip || `sessao:${getAnalyticsSessionId()}`;
 }
 
+function isPreviewCallTestIp(ip) {
+  return PREVIEW_CALL_TEST_IPS.includes(String(ip || '').trim());
+}
+
 async function getFinishedPreviewCallByIp(ip) {
   const { data, error } = await _supa
     .from(PREVIEW_CALL_TABLE)
@@ -641,7 +651,9 @@ async function openPreviewCallRoom() {
     });
 
     const ip = getPreviewCallIpKey(await getClientIp());
-    const finishedCall = await getFinishedPreviewCallByIp(ip);
+    const finishedCall = isPreviewCallTestIp(ip)
+      ? null
+      : await getFinishedPreviewCallByIp(ip);
 
     if (finishedCall) {
       trackEvent('chamada_previa_repetida', {
@@ -794,6 +806,55 @@ function setupCallHandlers() {
       });
     });
   }
+}
+
+function setAmandaPresence(isOnline) {
+  const wrapper = document.getElementById('profile-presence');
+  const text = document.getElementById('profile-presence-text');
+
+  if (!wrapper || !text) {
+    return;
+  }
+
+  wrapper.classList.toggle('is-online', Boolean(isOnline));
+  wrapper.classList.toggle('is-offline', !isOnline);
+  text.textContent = isOnline ? 'Amanda esta online' : 'Amanda esta offline';
+}
+
+async function refreshAmandaPresence() {
+  const wrapper = document.getElementById('profile-presence');
+
+  if (!wrapper || typeof _supa === 'undefined' || !_supa) {
+    return;
+  }
+
+  const { data, error } = await _supa
+    .from(PRESENCE_TABLE)
+    .select('online, heartbeat_em, updated_at')
+    .eq('chave', PRESENCE_KEY)
+    .maybeSingle();
+
+  if (error) {
+    console.warn('Nao consegui carregar status online:', error.message || error);
+    setAmandaPresence(false);
+    return;
+  }
+
+  const heartbeat = data?.heartbeat_em || data?.updated_at;
+  const heartbeatTime = heartbeat ? new Date(heartbeat).getTime() : 0;
+  const isFresh = heartbeatTime && Date.now() - heartbeatTime <= PRESENCE_ONLINE_WINDOW_MS;
+
+  setAmandaPresence(Boolean(data?.online && isFresh));
+}
+
+function startAmandaPresencePolling() {
+  refreshAmandaPresence();
+
+  if (presencePollTimer) {
+    window.clearInterval(presencePollTimer);
+  }
+
+  presencePollTimer = window.setInterval(refreshAmandaPresence, PRESENCE_POLL_MS);
 }
 
 function getPreviewSeconds() {
@@ -2125,6 +2186,7 @@ async function postComment() {
 document.addEventListener('DOMContentLoaded', () => {
   setupVipCheckoutHandlers();
   setupCallHandlers();
+  startAmandaPresencePolling();
 
   const commentText = document.getElementById('comment-text');
 
@@ -2144,4 +2206,9 @@ syncModalViewportHeight();
 window.addEventListener('resize', syncModalViewportHeight);
 window.addEventListener('orientationchange', syncModalViewportHeight);
 document.addEventListener('fullscreenchange', syncModalViewportHeight);
+window.addEventListener('beforeunload', () => {
+  if (presencePollTimer) {
+    window.clearInterval(presencePollTimer);
+  }
+});
 loadContent();
