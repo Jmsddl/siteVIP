@@ -1438,6 +1438,30 @@ body.modal-open {
   opacity: 0.82;
 }
 
+.call-request-button.is-answer-action {
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.22), transparent 36%),
+    linear-gradient(135deg, #16c784, #1d8cff);
+  box-shadow: 0 16px 36px rgba(22, 199, 132, 0.34);
+  animation: callButtonPulse 1.15s ease-in-out infinite;
+}
+
+.call-request-button.is-answer-action::before {
+  content: "☎";
+  background: rgba(255, 255, 255, 0.24);
+}
+
+@keyframes callButtonPulse {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-1px);
+  }
+}
+
 .telegram-chat-form {
   display: flex;
   gap: 8px;

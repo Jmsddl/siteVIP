@@ -1,8 +1,9 @@
 const ROOM_ADMIN_PLAN = 'admin';
 const ROOM_TABLE = 'chamadas_previas';
 const ROOM_MESSAGES_TABLE = 'chamada_mensagens';
-const ROOM_VIDEO_BASE_URL = 'https://meet.jit.si';
-const ROOM_REFRESH_MS = 4000;
+const ROOM_VIDEO_DOMAIN = 'meet.jit.si';
+const ROOM_VIDEO_BASE_URL = `https://${ROOM_VIDEO_DOMAIN}`;
+const ROOM_REFRESH_MS = 2500;
 const ROOM_ACTIVE_STATUSES = ['aguardando', 'chamando', 'liberado', 'em_chamada', 'finalizado'];
 const ROOM_FINISHED_MESSAGE = 'Voce ja participou, agora pague a chamada completa.';
 const ROOM_PRESENCE_TABLE = 'sala_status';
@@ -66,15 +67,29 @@ function getRoomLoginUsername(row) {
   return details.login_username || details.username || '';
 }
 
+function getRoomDetails(row) {
+  return row?.detalhes && typeof row.detalhes === 'object'
+    ? row.detalhes
+    : {};
+}
+
 function getRoomVideoUrl(rowOrId) {
   const existingUrl = typeof rowOrId === 'object' ? rowOrId?.meet_url : '';
   const id = typeof rowOrId === 'object' ? rowOrId?.id : rowOrId;
 
-  if (existingUrl && String(existingUrl).includes('meet.jit.si')) {
+  if (existingUrl && /^https?:\/\//i.test(String(existingUrl))) {
     return existingUrl;
   }
 
   return `${ROOM_VIDEO_BASE_URL}/AmandaVip-${String(id || Date.now()).replace(/[^a-zA-Z0-9]/g, '')}`;
+}
+
+function getRoomVideoDomain(rowOrId) {
+  try {
+    return new URL(getRoomVideoUrl(rowOrId)).hostname;
+  } catch (error) {
+    return ROOM_VIDEO_DOMAIN;
+  }
 }
 
 function getRoomVideoRoomName(rowOrId) {
@@ -98,7 +113,45 @@ function getRoomVideoRoomName(rowOrId) {
 function buildRoomVideoEmbedUrl(rowOrId, displayName = 'Amanda') {
   const encodedName = encodeURIComponent(displayName);
 
-  return `${getRoomVideoUrl(rowOrId)}#userInfo.displayName="${encodedName}"&config.prejoinPageEnabled=false&config.disableDeepLinking=true&config.startWithAudioMuted=false&config.startWithVideoMuted=false`;
+  return `${getRoomVideoUrl(rowOrId)}#userInfo.displayName="${encodedName}"&config.prejoinPageEnabled=false&config.prejoinConfig.enabled=false&config.disableDeepLinking=true&config.startWithAudioMuted=false&config.startWithVideoMuted=false`;
+}
+
+function getRoomJitsiConfig() {
+  return {
+    prejoinPageEnabled: false,
+    prejoinConfig: { enabled: false },
+    disableDeepLinking: true,
+    startWithAudioMuted: false,
+    startWithVideoMuted: false,
+    startAudioOnly: false,
+    enableClosePage: false,
+    p2p: { enabled: true }
+  };
+}
+
+function getRoomJitsiInterfaceConfig() {
+  return {
+    MOBILE_APP_PROMO: false,
+    SHOW_JITSI_WATERMARK: false,
+    SHOW_BRAND_WATERMARK: false,
+    SHOW_POWERED_BY: false,
+    DISABLE_JOIN_LEAVE_NOTIFICATIONS: true
+  };
+}
+
+function attachRoomJitsiListeners(id, api) {
+  api.addListener('videoConferenceJoined', () => {
+    setRoomStatus('Chamada aberta no painel.');
+  });
+  api.addListener('participantJoined', () => {
+    setRoomStatus('Cliente entrou na chamada.');
+  });
+  api.addListener('peerConnectionFailure', () => {
+    setRoomStatus('Conexao da chamada instavel. Feche e abra a chamada novamente.', true);
+  });
+  api.addListener('readyToClose', () => {
+    disposeRoomJitsi(id);
+  });
 }
 
 function disposeRoomJitsi(id) {
@@ -108,13 +161,13 @@ function disposeRoomJitsi(id) {
     return;
   }
 
+  roomJitsiApis.delete(id);
+
   try {
     api.dispose();
   } catch (error) {
     console.warn('Nao consegui fechar chamada de video:', error);
   }
-
-  roomJitsiApis.delete(id);
 }
 
 function mountRoomJitsiMeeting(id, rowOrId, displayName = 'Amanda') {
@@ -129,25 +182,16 @@ function mountRoomJitsiMeeting(id, rowOrId, displayName = 'Amanda') {
   frame.innerHTML = '';
 
   if (window.JitsiMeetExternalAPI) {
-    const api = new window.JitsiMeetExternalAPI('meet.jit.si', {
+    const api = new window.JitsiMeetExternalAPI(getRoomVideoDomain(rowOrId), {
       roomName: getRoomVideoRoomName(rowOrId),
       parentNode: frame,
       width: '100%',
       height: '100%',
       userInfo: { displayName },
-      configOverwrite: {
-        prejoinPageEnabled: false,
-        disableDeepLinking: true,
-        startWithAudioMuted: false,
-        startWithVideoMuted: false
-      },
-      interfaceConfigOverwrite: {
-        MOBILE_APP_PROMO: false,
-        SHOW_JITSI_WATERMARK: false,
-        SHOW_BRAND_WATERMARK: false,
-        SHOW_POWERED_BY: false
-      }
+      configOverwrite: getRoomJitsiConfig(),
+      interfaceConfigOverwrite: getRoomJitsiInterfaceConfig()
     });
+    attachRoomJitsiListeners(id, api);
     roomJitsiApis.set(id, api);
   } else {
     const iframe = document.createElement('iframe');
@@ -840,7 +884,13 @@ async function acceptIncomingCall(id) {
   const updated = await updatePreviewCall(id, {
     status: 'liberado',
     meet_url: videoUrl,
-    liberado_em: now
+    liberado_em: now,
+    finalizado_em: null,
+    detalhes: {
+      ...getRoomDetails(row),
+      call_direction: 'usuario',
+      admin_accepted_at: now
+    }
   });
 
   if (!updated) {
@@ -897,7 +947,12 @@ async function startAdminVideoCall(id) {
     meet_url: videoUrl,
     liberado_em: now,
     entrou_em: null,
-    finalizado_em: null
+    finalizado_em: null,
+    detalhes: {
+      ...getRoomDetails(row),
+      call_direction: 'admin',
+      admin_started_at: now
+    }
   });
 
   if (!updated) {
@@ -906,7 +961,7 @@ async function startAdminVideoCall(id) {
 
   await insertRoomSystemMessage(
     id,
-    'Amanda iniciou uma nova chamada de video. Toque em Entrar na chamada de video.'
+    'Amanda esta ligando para voce. Toque em Atender chamada.'
   );
   hideIncomingCallPopup();
   mountRoomJitsiMeeting(id, updatedRow, 'Amanda');
