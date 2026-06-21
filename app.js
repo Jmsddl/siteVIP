@@ -89,7 +89,10 @@ const PREVIEW_CALL_POLL_MS = 5000;
 const PREVIEW_CHAT_POLL_MS = 3000;
 const PREVIEW_CALL_RING_TIMEOUT_MS = 45000;
 const PREVIEW_CALL_ACTIVE_STATUSES = ['aguardando', 'chamando', 'liberado', 'em_chamada'];
+const PREVIEW_CHAT_VISIBLE_STATUSES = ['aguardando', 'chamando', 'liberado', 'em_chamada', 'finalizado'];
 const PREVIEW_CALL_TEST_IPS = ['177.10.146.100'];
+const PREVIEW_VISITOR_STORAGE_KEY = 'amanda_preview_visitor_name';
+const PREVIEW_FINISHED_MESSAGE = 'Voce ja participou, agora pague a chamada completa.';
 const PRESENCE_TABLE = 'sala_status';
 const PRESENCE_KEY = 'amanda';
 const PRESENCE_POLL_MS = 15000;
@@ -570,27 +573,31 @@ function isPreviewCallTestIp(ip) {
   return PREVIEW_CALL_TEST_IPS.includes(String(ip || '').trim());
 }
 
-async function getFinishedPreviewCallByIp(ip) {
-  const { data, error } = await _supa
-    .from(PREVIEW_CALL_TABLE)
-    .select('id,status,created_at')
-    .eq('ip', ip)
-    .eq('status', 'finalizado')
-    .limit(1);
+function getPreviewVisitorName() {
+  try {
+    let visitorName = localStorage.getItem(PREVIEW_VISITOR_STORAGE_KEY);
 
-  if (error) {
-    throw error;
+    if (!visitorName) {
+      visitorName = `Visitante ${Math.floor(1000 + Math.random() * 9000)}`;
+      localStorage.setItem(PREVIEW_VISITOR_STORAGE_KEY, visitorName);
+    }
+
+    return visitorName;
+  } catch (error) {
+    return `Visitante ${Math.floor(1000 + Math.random() * 9000)}`;
   }
-
-  return data?.[0] || null;
 }
 
-async function getActivePreviewCallByIp(ip) {
+async function getPreviewConversationByIp(ip, includeFinished = true) {
+  const statuses = includeFinished
+    ? PREVIEW_CHAT_VISIBLE_STATUSES
+    : PREVIEW_CALL_ACTIVE_STATUSES;
   const { data, error } = await _supa
     .from(PREVIEW_CALL_TABLE)
     .select('*')
     .eq('ip', ip)
-    .in('status', PREVIEW_CALL_ACTIVE_STATUSES)
+    .in('status', statuses)
+    .order('updated_at', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(1);
 
@@ -603,18 +610,23 @@ async function getActivePreviewCallByIp(ip) {
 
 async function createPreviewCall(ip) {
   const user = getStoredUser();
+  const visitorName = getPreviewVisitorName();
   const now = new Date().toISOString();
   const roomSlug = `AmandaVip-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
   const videoUrl = `${PREVIEW_CALL_VIDEO_BASE_URL}/${roomSlug}`;
   const { data, error } = await _supa
     .from(PREVIEW_CALL_TABLE)
     .insert({
-      username: user.username || 'Anonimo',
+      username: visitorName,
       plano: user.plano || '',
       sessao_id: getAnalyticsSessionId(),
       ip,
       status: 'aguardando',
       meet_url: videoUrl,
+      detalhes: {
+        login_username: user.username || '',
+        visitor_name: visitorName
+      },
       created_at: now,
       updated_at: now
     })
@@ -654,16 +666,14 @@ function getPreviewVideoRoomName(record) {
 }
 
 function buildPreviewVideoEmbedUrl(record) {
-  const user = getStoredUser();
-  const displayName = encodeURIComponent(user.username || 'Convidado');
+  const displayName = encodeURIComponent(getPreviewVisitorName());
   const baseUrl = getPreviewVideoUrl(record);
 
   return `${baseUrl}#userInfo.displayName="${displayName}"&config.prejoinPageEnabled=false&config.disableDeepLinking=true&config.startWithAudioMuted=false&config.startWithVideoMuted=false`;
 }
 
 function mountPreviewJitsiMeeting(container, record) {
-  const user = getStoredUser();
-  const displayName = user.username || 'Convidado';
+  const displayName = getPreviewVisitorName();
 
   disposePreviewJitsi();
   container.innerHTML = '';
@@ -778,13 +788,12 @@ async function sendPreviewChatMessage(text, authorType = 'usuario') {
     return;
   }
 
-  const user = getStoredUser();
   const { error } = await _supa
     .from(PREVIEW_CALL_MESSAGES_TABLE)
     .insert({
       chamada_id: previewCallRecord.id,
       autor_tipo: authorType,
-      autor_nome: authorType === 'usuario' ? (user.username || 'Convidado') : 'Amanda',
+      autor_nome: authorType === 'usuario' ? getPreviewVisitorName() : 'Amanda',
       texto: text.trim()
     });
 
@@ -861,6 +870,12 @@ async function requestPreviewVideoCall() {
     return;
   }
 
+  if (previewCallRecord.status === 'finalizado') {
+    setPreviewChatStatus('Chamada previa finalizada');
+    showPreviewCompleteShortcut(true);
+    return;
+  }
+
   if (previewCallRecord.status === 'liberado' || previewCallRecord.status === 'em_chamada') {
     enterPreviewCall();
     return;
@@ -933,6 +948,31 @@ async function ensurePreviewWelcomeMessage(record) {
     });
 }
 
+async function ensurePreviewFinishedMessage(record) {
+  if (!record?.id) {
+    return;
+  }
+
+  const { count, error } = await _supa
+    .from(PREVIEW_CALL_MESSAGES_TABLE)
+    .select('id', { count: 'exact', head: true })
+    .eq('chamada_id', record.id)
+    .eq('texto', PREVIEW_FINISHED_MESSAGE);
+
+  if (error || count) {
+    return;
+  }
+
+  await _supa
+    .from(PREVIEW_CALL_MESSAGES_TABLE)
+    .insert({
+      chamada_id: record.id,
+      autor_tipo: 'sistema',
+      autor_nome: 'Sistema',
+      texto: PREVIEW_FINISHED_MESSAGE
+    });
+}
+
 function startPreviewChatPolling() {
   loadPreviewChatMessages();
 
@@ -985,7 +1025,21 @@ function applyPreviewCallStatus(record) {
   }
 
   if (record.status === 'finalizado') {
+    const videoStage = document.getElementById('preview-video-stage');
+    const videoFrame = document.getElementById('preview-video-frame');
+
+    previewAutoJoinPending = false;
     stopPreviewRinging();
+    disposePreviewJitsi();
+
+    if (videoFrame) {
+      videoFrame.innerHTML = '';
+    }
+
+    if (videoStage) {
+      videoStage.hidden = true;
+    }
+
     setPreviewChatStatus('Chamada previa finalizada');
     setPreviewCallEnterEnabled(false, 'Chamada previa usada');
     if (requestButton) {
@@ -993,7 +1047,6 @@ function applyPreviewCallStatus(record) {
       requestButton.textContent = 'Chamada finalizada';
     }
     showPreviewCompleteShortcut(true);
-    stopPreviewCallTimers();
     return;
   }
 
@@ -1040,6 +1093,10 @@ async function refreshPreviewCallStatus() {
     return;
   }
 
+  if (data?.status === 'finalizado') {
+    await ensurePreviewFinishedMessage(data);
+  }
+
   applyPreviewCallStatus(data);
 }
 
@@ -1080,30 +1137,8 @@ async function openPreviewCallRoom() {
     });
 
     const ip = getPreviewCallIpKey(await getClientIp());
-    const finishedCall = isPreviewCallTestIp(ip)
-      ? null
-      : await getFinishedPreviewCallByIp(ip);
-
-    if (finishedCall) {
-      trackEvent('chamada_previa_repetida', {
-        alvo_tipo: 'chamada_previa',
-        alvo_titulo: 'IP ja participou'
-      });
-      renderPreviewChatMessages([{
-        id: 'finished',
-        autor_tipo: 'sistema',
-        texto: 'Voce ja participou, agora pague a chamada completa.',
-        created_at: new Date().toISOString()
-      }]);
-      applyPreviewCallStatus({
-        ...finishedCall,
-        ip,
-        status: 'finalizado'
-      });
-      return;
-    }
-
-    let activeCall = await getActivePreviewCallByIp(ip);
+    const includeFinished = !isPreviewCallTestIp(ip);
+    let activeCall = await getPreviewConversationByIp(ip, includeFinished);
 
     if (!activeCall) {
       activeCall = await createPreviewCall(ip);
@@ -1114,6 +1149,15 @@ async function openPreviewCallRoom() {
     }
 
     await ensurePreviewWelcomeMessage(activeCall);
+
+    if (activeCall.status === 'finalizado') {
+      trackEvent('chamada_previa_repetida', {
+        alvo_tipo: 'chamada_previa',
+        alvo_titulo: 'IP ja participou'
+      });
+      await ensurePreviewFinishedMessage(activeCall);
+    }
+
     applyPreviewCallStatus(activeCall);
     startPreviewCallPolling();
     startPreviewChatPolling();

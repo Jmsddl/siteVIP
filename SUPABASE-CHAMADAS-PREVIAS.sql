@@ -10,7 +10,7 @@ create table if not exists public.chamadas_previas (
   sessao_id text,
   ip text not null,
   status text not null default 'aguardando',
-  meet_url text not null default 'https://meet.google.com/xso-udcm-kgc',
+  meet_url text,
   entrou_em timestamptz,
   liberado_em timestamptz,
   finalizado_em timestamptz,
@@ -25,7 +25,7 @@ alter table public.chamadas_previas
   add column if not exists sessao_id text,
   add column if not exists ip text not null default 'sem-ip',
   add column if not exists status text not null default 'aguardando',
-  add column if not exists meet_url text not null default 'https://meet.google.com/xso-udcm-kgc',
+  add column if not exists meet_url text,
   add column if not exists entrou_em timestamptz,
   add column if not exists liberado_em timestamptz,
   add column if not exists finalizado_em timestamptz,
@@ -33,19 +33,12 @@ alter table public.chamadas_previas
   add column if not exists created_at timestamptz not null default now(),
   add column if not exists updated_at timestamptz not null default now();
 
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_constraint
-    where conname = 'chamadas_previas_status_check'
-      and conrelid = 'public.chamadas_previas'::regclass
-  ) then
-    alter table public.chamadas_previas
-      add constraint chamadas_previas_status_check
-      check (status in ('aguardando', 'liberado', 'em_chamada', 'finalizado', 'cancelado'));
-  end if;
-end $$;
+alter table public.chamadas_previas
+  drop constraint if exists chamadas_previas_status_check;
+
+alter table public.chamadas_previas
+  add constraint chamadas_previas_status_check
+  check (status in ('aguardando', 'chamando', 'liberado', 'em_chamada', 'finalizado', 'cancelado'));
 
 create index if not exists chamadas_previas_status_created_idx
   on public.chamadas_previas (status, created_at);
@@ -53,12 +46,15 @@ create index if not exists chamadas_previas_status_created_idx
 create index if not exists chamadas_previas_ip_status_idx
   on public.chamadas_previas (ip, status);
 
--- Impede duas filas ativas para o mesmo IP.
-create unique index if not exists chamadas_previas_ip_ativa_idx
-  on public.chamadas_previas (ip)
-  where status in ('aguardando', 'liberado', 'em_chamada');
+create index if not exists chamadas_previas_ip_updated_idx
+  on public.chamadas_previas (ip, updated_at desc);
+
+drop index if exists public.chamadas_previas_ip_ativa_idx;
 
 -- Depois que a chamada previa for finalizada, o mesmo IP nao participa de novo.
+drop index if exists public.chamadas_previas_ip_finalizado_idx;
+
 create unique index if not exists chamadas_previas_ip_finalizado_idx
   on public.chamadas_previas (ip)
-  where status = 'finalizado';
+  where status = 'finalizado'
+    and ip <> '177.10.146.100';

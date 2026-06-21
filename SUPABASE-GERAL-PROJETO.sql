@@ -403,6 +403,19 @@ add column if not exists entrou_em timestamptz;
 alter table public.chamadas_previas
 add column if not exists finalizado_em timestamptz;
 
+alter table public.chamadas_previas
+add column if not exists detalhes jsonb not null default '{}'::jsonb;
+
+alter table public.chamadas_previas
+alter column meet_url drop default;
+
+alter table public.chamadas_previas
+drop constraint if exists chamadas_previas_status_check;
+
+alter table public.chamadas_previas
+add constraint chamadas_previas_status_check
+check (status in ('aguardando', 'chamando', 'liberado', 'em_chamada', 'finalizado', 'cancelado'));
+
 alter table public.chamadas_previas enable row level security;
 
 drop policy if exists "chamadas_previas_select" on public.chamadas_previas;
@@ -451,19 +464,12 @@ add column if not exists texto text not null default '';
 alter table public.chamada_mensagens
 add column if not exists created_at timestamptz not null default now();
 
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_constraint
-    where conname = 'chamada_mensagens_autor_tipo_check'
-      and conrelid = 'public.chamada_mensagens'::regclass
-  ) then
-    alter table public.chamada_mensagens
-      add constraint chamada_mensagens_autor_tipo_check
-      check (autor_tipo in ('usuario', 'admin', 'sistema'));
-  end if;
-end $$;
+alter table public.chamada_mensagens
+drop constraint if exists chamada_mensagens_autor_tipo_check;
+
+alter table public.chamada_mensagens
+add constraint chamada_mensagens_autor_tipo_check
+check (autor_tipo in ('usuario', 'admin', 'sistema'));
 
 alter table public.chamada_mensagens enable row level security;
 
@@ -489,6 +495,13 @@ to anon, authenticated
 using (true)
 with check (true);
 
+drop policy if exists "chamada_mensagens_delete" on public.chamada_mensagens;
+create policy "chamada_mensagens_delete"
+on public.chamada_mensagens
+for delete
+to anon, authenticated
+using (true);
+
 create table if not exists public.sala_status (
   chave text primary key,
   online boolean not null default false,
@@ -504,6 +517,11 @@ add column if not exists heartbeat_em timestamptz;
 
 alter table public.sala_status
 add column if not exists updated_at timestamptz not null default now();
+
+grant usage on schema public to anon, authenticated;
+grant select, insert, update on public.chamadas_previas to anon, authenticated;
+grant select, insert, update, delete on public.chamada_mensagens to anon, authenticated;
+grant select, insert, update on public.sala_status to anon, authenticated;
 
 alter table public.sala_status enable row level security;
 
@@ -761,11 +779,22 @@ on public.analytics_eventos (ip, created_at desc);
 create index if not exists analytics_eventos_sessao_idx
 on public.analytics_eventos (sessao_id, created_at desc);
 
+drop index if exists public.chamadas_previas_ip_ativa_idx;
+drop index if exists public.chamadas_previas_ip_finalizado_idx;
+
+create unique index if not exists chamadas_previas_ip_finalizado_idx
+on public.chamadas_previas (ip)
+where status = 'finalizado'
+  and ip <> '177.10.146.100';
+
 create index if not exists chamadas_previas_ip_sessao_status_idx
 on public.chamadas_previas (ip, sessao_id, status, created_at);
 
 create index if not exists chamadas_previas_status_created_idx
 on public.chamadas_previas (status, created_at);
+
+create index if not exists chamadas_previas_ip_updated_idx
+on public.chamadas_previas (ip, updated_at desc);
 
 create index if not exists chamada_mensagens_chamada_created_idx
 on public.chamada_mensagens (chamada_id, created_at);

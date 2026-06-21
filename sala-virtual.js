@@ -3,7 +3,8 @@ const ROOM_TABLE = 'chamadas_previas';
 const ROOM_MESSAGES_TABLE = 'chamada_mensagens';
 const ROOM_VIDEO_BASE_URL = 'https://meet.jit.si';
 const ROOM_REFRESH_MS = 4000;
-const ROOM_ACTIVE_STATUSES = ['aguardando', 'chamando', 'liberado', 'em_chamada'];
+const ROOM_ACTIVE_STATUSES = ['aguardando', 'chamando', 'liberado', 'em_chamada', 'finalizado'];
+const ROOM_FINISHED_MESSAGE = 'Voce ja participou, agora pague a chamada completa.';
 const ROOM_PRESENCE_TABLE = 'sala_status';
 const ROOM_PRESENCE_KEY = 'amanda';
 const ROOM_PRESENCE_HEARTBEAT_MS = 10000;
@@ -47,6 +48,22 @@ function escapeRoom(value) {
     '"': '&quot;',
     "'": '&#39;'
   }[char]));
+}
+
+function createRoomVideoUrl() {
+  const roomSlug = `AmandaVip-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+
+  return `${ROOM_VIDEO_BASE_URL}/${roomSlug}`;
+}
+
+function getRoomLoginUsername(row) {
+  const details = row?.detalhes;
+
+  if (!details || typeof details !== 'object') {
+    return '';
+  }
+
+  return details.login_username || details.username || '';
 }
 
 function getRoomVideoUrl(rowOrId) {
@@ -475,14 +492,20 @@ function renderRoomRows() {
     const isCalling = row.status === 'chamando';
     const isReleased = row.status === 'liberado';
     const isInCall = row.status === 'em_chamada';
+    const isFinished = row.status === 'finalizado';
     const canOpenVideo = isReleased || isInCall;
+    const canStartAdminCall = isWaiting || isFinished;
+    const loginUsername = getRoomLoginUsername(row);
+    const planLine = loginUsername
+      ? `${row.plano || '-'} - login ${loginUsername}`
+      : (row.plano || '-');
 
     return `
       <article class="virtual-room-card">
         <div class="virtual-room-card-head">
           <div>
             <strong>${escapeRoom(row.username || 'Anonimo')}</strong>
-            <span>${escapeRoom(row.plano || '-')}</span>
+            <span>${escapeRoom(planLine)}</span>
           </div>
           <b class="room-status-pill is-${escapeRoom(row.status || 'aguardando')}">
             ${escapeRoom(getRoomStatusLabel(row.status))}
@@ -523,6 +546,14 @@ function renderRoomRows() {
             ${isCalling ? '' : 'disabled'}
           >
             Atender agora
+          </button>
+          <button
+            class="btn-secondary"
+            type="button"
+            onclick="startAdminVideoCall('${escapeRoom(row.id)}')"
+            ${canStartAdminCall ? '' : 'disabled'}
+          >
+            Ligar para usuario
           </button>
           <button
             class="btn-secondary"
@@ -729,10 +760,11 @@ async function updatePreviewCall(id, fields) {
   if (error) {
     console.error('Erro ao atualizar chamada:', error);
     alert('Nao consegui atualizar essa chamada agora.');
-    return;
+    return false;
   }
 
-  loadRoomRows();
+  await loadRoomRows();
+  return true;
 }
 
 async function insertRoomSystemMessage(chamadaId, text) {
@@ -795,19 +827,32 @@ function openAdminVideoCall(id) {
 async function acceptIncomingCall(id) {
   const row = roomRows.find((item) => item.id === id);
   const videoUrl = getRoomVideoUrl(row || id);
-
-  await updatePreviewCall(id, {
+  const now = new Date().toISOString();
+  const updatedRow = {
+    ...(row || {}),
+    id,
     status: 'liberado',
     meet_url: videoUrl,
-    liberado_em: new Date().toISOString()
+    liberado_em: now,
+    updated_at: now
+  };
+
+  const updated = await updatePreviewCall(id, {
+    status: 'liberado',
+    meet_url: videoUrl,
+    liberado_em: now
   });
+
+  if (!updated) {
+    return;
+  }
 
   await insertRoomSystemMessage(
     id,
     'Amanda atendeu a chamada de video.'
   );
   hideIncomingCallPopup();
-  openAdminVideoCall(id);
+  mountRoomJitsiMeeting(id, updatedRow, 'Amanda');
   loadRoomMessagesForRows();
 }
 
@@ -816,9 +861,13 @@ async function releasePreviewCall(id) {
 }
 
 async function declineIncomingCall(id) {
-  await updatePreviewCall(id, {
+  const updated = await updatePreviewCall(id, {
     status: 'aguardando'
   });
+
+  if (!updated) {
+    return;
+  }
 
   await insertRoomSystemMessage(
     id,
@@ -828,22 +877,67 @@ async function declineIncomingCall(id) {
   loadRoomMessagesForRows();
 }
 
+async function startAdminVideoCall(id) {
+  const row = roomRows.find((item) => item.id === id);
+  const videoUrl = createRoomVideoUrl();
+  const now = new Date().toISOString();
+  const updatedRow = {
+    ...(row || {}),
+    id,
+    status: 'liberado',
+    meet_url: videoUrl,
+    liberado_em: now,
+    entrou_em: null,
+    finalizado_em: null,
+    updated_at: now
+  };
+
+  const updated = await updatePreviewCall(id, {
+    status: 'liberado',
+    meet_url: videoUrl,
+    liberado_em: now,
+    entrou_em: null,
+    finalizado_em: null
+  });
+
+  if (!updated) {
+    return;
+  }
+
+  await insertRoomSystemMessage(
+    id,
+    'Amanda iniciou uma nova chamada de video. Toque em Entrar na chamada de video.'
+  );
+  hideIncomingCallPopup();
+  mountRoomJitsiMeeting(id, updatedRow, 'Amanda');
+  loadRoomMessagesForRows();
+}
+
 async function finishPreviewCall(id) {
-  await updatePreviewCall(id, {
+  const updated = await updatePreviewCall(id, {
     status: 'finalizado',
     finalizado_em: new Date().toISOString()
   });
 
+  if (!updated) {
+    return;
+  }
+
   await insertRoomSystemMessage(id, 'Chamada finalizada por Amanda.');
+  await insertRoomSystemMessage(id, ROOM_FINISHED_MESSAGE);
   disposeRoomJitsi(id);
   loadRoomMessagesForRows();
 }
 
 async function cancelPreviewCall(id) {
-  await updatePreviewCall(id, {
+  const updated = await updatePreviewCall(id, {
     status: 'cancelado',
     finalizado_em: new Date().toISOString()
   });
+
+  if (!updated) {
+    return;
+  }
 
   await insertRoomSystemMessage(id, 'Amanda encerrou esta solicitacao de chamada.');
   loadRoomMessagesForRows();
