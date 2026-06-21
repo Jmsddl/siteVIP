@@ -1,4 +1,4 @@
-const CACHE_NAME = 'amanda-vip-v20260620-telegram-chat';
+const CACHE_NAME = 'amanda-vip-v20260620-call-chat-v2';
 const APP_SHELL = [
   './',
   './index.html',

@@ -99,7 +99,7 @@ function eventLabel(evento) {
     selecionou_chamada_completa: 'Escolheu chamada completa',
     clicou_pagar_chamada_completa: 'Clicou para pagar chamada',
     enviou_mensagem_chamada_previa: 'Enviou mensagem no chat',
-    solicitou_videochamada_previa: 'Solicitou videochamada'
+    solicitou_videochamada_previa: 'Chamou por chamada de video'
   };
 
   return labels[evento] || evento || 'Evento';

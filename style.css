@@ -1221,22 +1221,110 @@ body.modal-open {
 }
 
 .telegram-chat-header strong {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 7px;
   color: #fff;
   font-size: 0.98rem;
 }
 
-.telegram-chat-header span {
+.telegram-chat-header > div > span {
   display: block;
   margin-top: 2px;
   color: rgba(255, 255, 255, 0.72);
   font-size: 0.8rem;
 }
 
+.telegram-chat-header small {
+  display: block;
+  margin-top: 2px;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 0.76rem;
+}
+
+.chat-presence-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #8a8a8a;
+  box-shadow: 0 0 0 3px rgba(138, 138, 138, 0.16);
+}
+
+.chat-presence-dot.is-online {
+  background: #2ee67b;
+  box-shadow: 0 0 0 3px rgba(46, 230, 123, 0.18);
+}
+
 .telegram-chat-header b {
   margin-left: auto;
   color: rgba(255, 255, 255, 0.82);
   font-size: 0.8rem;
+}
+
+.telegram-call-ringing {
+  display: grid;
+  justify-items: center;
+  gap: 9px;
+  padding: 22px 14px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: radial-gradient(circle at center, rgba(233, 30, 140, 0.22), rgba(0, 0, 0, 0.12) 62%);
+  text-align: center;
+}
+
+.telegram-call-ringing[hidden] {
+  display: none !important;
+}
+
+.telegram-call-ringing strong {
+  color: #fff;
+  font-size: 1.05rem;
+}
+
+.telegram-call-ringing p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.66);
+  font-size: 0.84rem;
+}
+
+.telegram-call-avatar {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  display: grid;
+  place-items: center;
+}
+
+.telegram-call-avatar span {
+  position: absolute;
+  inset: 8px;
+  border: 1px solid rgba(233, 30, 140, 0.48);
+  border-radius: 50%;
+  animation: callPulse 1.55s ease-out infinite;
+}
+
+.telegram-call-avatar span:nth-child(2) {
+  animation-delay: 0.48s;
+}
+
+.telegram-call-avatar img {
+  position: relative;
+  z-index: 1;
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid var(--accent2);
+}
+
+@keyframes callPulse {
+  0% {
+    opacity: 0.78;
+    transform: scale(0.76);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.35);
+  }
 }
 
 .telegram-video-stage {
@@ -1251,7 +1339,8 @@ body.modal-open {
   display: none !important;
 }
 
-.telegram-video-stage iframe {
+.telegram-video-stage iframe,
+.telegram-video-frame {
   width: 100%;
   height: 100%;
   border: 0;
@@ -1313,7 +1402,7 @@ body.modal-open {
 
 .telegram-chat-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 8px;
   padding: 10px 12px 0;
 }
@@ -1321,6 +1410,32 @@ body.modal-open {
 .call-request-button,
 .telegram-chat-actions .call-enter-button {
   min-height: 44px;
+}
+
+.call-request-button.is-call-action {
+  min-height: 52px;
+  border: 0;
+  color: #fff;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.2), transparent 36%),
+    linear-gradient(135deg, #ff2ea6, #7c3cff);
+  box-shadow: 0 16px 36px rgba(233, 30, 140, 0.34);
+  font-size: 0.98rem;
+}
+
+.call-request-button.is-call-action::before {
+  content: "☎";
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.call-request-button.is-call-action:disabled {
+  opacity: 0.82;
 }
 
 .telegram-chat-form {
@@ -1972,6 +2087,63 @@ body.modal-open {
   color: var(--text-muted);
 }
 
+.room-message-usage {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.room-message-usage-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.room-message-usage-head strong,
+.room-message-usage-head b {
+  color: #fff;
+}
+
+.room-message-usage-head span {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.room-message-progress {
+  overflow: hidden;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.room-message-progress span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2ee67b, var(--accent2));
+  transition: width 0.25s ease;
+}
+
+.room-message-progress span.is-warning {
+  background: linear-gradient(90deg, #ffc107, #ff7a1a);
+}
+
+.room-message-progress span.is-full {
+  background: linear-gradient(90deg, #ff4141, var(--accent));
+}
+
+.room-message-usage button {
+  justify-self: start;
+}
+
 .virtual-room-empty,
 .virtual-room-card {
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -2022,10 +2194,25 @@ body.modal-open {
   color: #ffd36a;
 }
 
+.room-status-pill.is-chamando {
+  background: rgba(233, 30, 140, 0.22);
+  color: #ff9ed2;
+  animation: callPillPulse 1s ease-in-out infinite alternate;
+}
+
 .room-status-pill.is-liberado,
 .room-status-pill.is-em_chamada {
   background: rgba(44, 190, 120, 0.2);
   color: #6dffb0;
+}
+
+@keyframes callPillPulse {
+  from {
+    box-shadow: 0 0 0 rgba(233, 30, 140, 0);
+  }
+  to {
+    box-shadow: 0 0 20px rgba(233, 30, 140, 0.35);
+  }
 }
 
 .virtual-room-meta {
@@ -2114,7 +2301,8 @@ body.modal-open {
   display: none !important;
 }
 
-.room-video-stage iframe {
+.room-video-stage iframe,
+.room-video-frame {
   width: 100%;
   height: 100%;
   border: 0;
@@ -2197,6 +2385,74 @@ body.modal-open {
   }
 }
 
+.room-incoming-call {
+  position: fixed;
+  inset: 0;
+  z-index: 980;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(8px);
+}
+
+.room-incoming-call[hidden] {
+  display: none !important;
+}
+
+.room-incoming-card {
+  width: min(420px, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 18px;
+  padding: 28px 22px 22px;
+  background: #1d2025;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.58);
+  text-align: center;
+}
+
+.room-incoming-card img {
+  width: 116px;
+  height: 116px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid var(--accent2);
+  box-shadow: 0 0 0 8px rgba(233, 30, 140, 0.1);
+}
+
+.room-incoming-card span {
+  margin-top: 8px;
+  color: #7dc8ff;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.room-incoming-card strong {
+  color: #fff;
+  font-size: 1.35rem;
+}
+
+.room-incoming-card p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.room-incoming-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.room-incoming-actions button {
+  min-height: 46px;
+}
+
 @media (max-width: 900px) {
   .analytics-hero {
     align-items: flex-start;
@@ -2267,6 +2523,20 @@ body.modal-open {
     padding: 0;
   }
 
+  .telegram-call-ringing {
+    padding: 18px 12px 14px;
+  }
+
+  .telegram-call-avatar {
+    width: 82px;
+    height: 82px;
+  }
+
+  .telegram-call-avatar img {
+    width: 64px;
+    height: 64px;
+  }
+
   .telegram-chat-actions {
     grid-template-columns: 1fr;
   }
@@ -2292,6 +2562,17 @@ body.modal-open {
     width: 100%;
   }
 
+  .room-message-usage-head,
+  .room-incoming-actions {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .room-message-usage button {
+    width: 100%;
+  }
+
   .room-alert-popup {
     left: 14px;
     right: 14px;
@@ -2303,5 +2584,14 @@ body.modal-open {
 
   .room-alert-popup .btn-primary {
     width: 100%;
+  }
+
+  .room-incoming-card {
+    padding: 24px 16px 18px;
+  }
+
+  .room-incoming-card img {
+    width: 92px;
+    height: 92px;
   }
 }

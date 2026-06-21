@@ -7,7 +7,7 @@
   <title>Sala virtual</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="style.css?v=20260620-telegram-chat" />
+  <link rel="stylesheet" href="style.css?v=20260620-call-chat-v2" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
@@ -40,7 +40,7 @@
         <button class="btn-secondary" id="room-refresh" type="button">
           Atualizar
         </button>
-        <span class="room-admin-hint">Video abre dentro de cada atendimento</span>
+        <span class="room-admin-hint">Chamada de video abre dentro de cada atendimento</span>
       </div>
     </section>
 
@@ -52,6 +52,22 @@
       <span class="presence-dot"></span>
       <strong>Amanda online</strong>
       <small>Enquanto esta pagina estiver aberta, os usuarios veem voce online.</small>
+    </div>
+
+    <div class="room-message-usage">
+      <div class="room-message-usage-head">
+        <div>
+          <strong>Mensagens salvas</strong>
+          <span>Use a barra para acompanhar o peso do historico dos chats.</span>
+        </div>
+        <b id="room-message-count">0 / 1000</b>
+      </div>
+      <div class="room-message-progress" aria-hidden="true">
+        <span id="room-message-progress-fill"></span>
+      </div>
+      <button class="btn-secondary" id="room-clear-messages" type="button" disabled>
+        Apagar conversas do chat
+      </button>
     </div>
 
     <section class="virtual-room-grid" id="room-list"></section>
@@ -75,10 +91,28 @@
     </button>
   </div>
 
+  <div class="room-incoming-call" id="room-incoming-call" hidden>
+    <div class="room-incoming-card">
+      <img src="sua-foto.jpg" alt="Amanda Oliveira" />
+      <span>Chamada de video recebida</span>
+      <strong id="room-incoming-title">Alguem esta chamando</strong>
+      <p id="room-incoming-meta">Aguardando atendimento</p>
+      <div class="room-incoming-actions">
+        <button class="btn-primary" id="room-answer-incoming" type="button">
+          Atender agora
+        </button>
+        <button class="btn-secondary" id="room-decline-incoming" type="button">
+          Cancelar
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase-config.js?v=20260617-analytics"></script>
   <script src="auth.js?v=20260617-analytics"></script>
-  <script src="sala-virtual.js?v=20260620-telegram-chat"></script>
-  <script src="pwa.js?v=20260620-telegram-chat"></script>
+  <script src="https://meet.jit.si/external_api.js"></script>
+  <script src="sala-virtual.js?v=20260620-call-chat-v2"></script>
+  <script src="pwa.js?v=20260620-call-chat-v2"></script>
 </body>
 </html>

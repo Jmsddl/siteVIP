@@ -9,7 +9,7 @@
 
   <link rel="manifest" href="manifest.webmanifest"/>
   <link rel="apple-touch-icon" href="icon-192.png"/>
-  <link rel="stylesheet" href="style.css?v=20260620-telegram-chat"/>
+<link rel="stylesheet" href="style.css?v=20260620-call-chat-v2"/>
 
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
@@ -277,19 +277,31 @@ Aqui eu sou completamente sua:
       <div class="telegram-chat-header">
         <img src="sua-foto.jpg" alt="Amanda" />
         <div>
-          <strong>Amanda Oliveira</strong>
-          <span id="preview-call-message">Aguardando atendimento</span>
+          <strong>
+            <span class="chat-presence-dot is-offline" id="preview-presence-dot"></span>
+            Amanda Oliveira
+          </strong>
+          <span id="preview-presence-text">offline agora</span>
+          <small id="preview-call-message">Aguardando atendimento</small>
         </div>
         <b id="preview-call-timer">00:00</b>
       </div>
 
+      <div class="telegram-call-ringing" id="preview-call-ringing" hidden>
+        <div class="telegram-call-avatar">
+          <span></span>
+          <span></span>
+          <img src="sua-foto.jpg" alt="Amanda Oliveira" />
+        </div>
+        <strong>Chamando Amanda...</strong>
+        <p>Aguarde ela atender sua chamada de video.</p>
+      </div>
+
       <div class="telegram-video-stage" id="preview-video-stage" hidden>
-        <iframe
+        <div
+          class="telegram-video-frame"
           id="preview-video-frame"
-          title="Chamada de video"
-          allow="camera; microphone; fullscreen; display-capture; autoplay"
-          allowfullscreen
-        ></iframe>
+        ></div>
       </div>
 
       <div class="telegram-chat-messages" id="preview-chat-messages">
@@ -298,19 +310,11 @@ Aqui eu sou completamente sua:
 
       <div class="telegram-chat-actions">
         <button
-          class="btn-secondary call-request-button"
+          class="btn-primary call-request-button is-call-action"
           id="preview-call-request"
           type="button"
         >
-          Solicitar videochamada
-        </button>
-        <button
-          class="btn-primary call-enter-button"
-          id="preview-call-enter"
-          type="button"
-          disabled
-        >
-          Ligar por video
+          Chamar por videochamada
         </button>
         <button
           class="btn-secondary call-complete-shortcut"
@@ -439,9 +443,11 @@ Aqui eu sou completamente sua:
 
   <script src="auth.js?v=20260617-analytics"></script>
 
-  <script src="app.js?v=20260620-telegram-chat"></script>
+  <script src="https://meet.jit.si/external_api.js"></script>
 
-  <script src="pwa.js?v=20260620-telegram-chat"></script>
+  <script src="app.js?v=20260620-call-chat-v2"></script>
+
+  <script src="pwa.js?v=20260620-call-chat-v2"></script>
 
 </body>
 </html>

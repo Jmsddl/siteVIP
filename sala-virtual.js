@@ -3,16 +3,19 @@ const ROOM_TABLE = 'chamadas_previas';
 const ROOM_MESSAGES_TABLE = 'chamada_mensagens';
 const ROOM_VIDEO_BASE_URL = 'https://meet.jit.si';
 const ROOM_REFRESH_MS = 4000;
-const ROOM_ACTIVE_STATUSES = ['aguardando', 'liberado', 'em_chamada'];
+const ROOM_ACTIVE_STATUSES = ['aguardando', 'chamando', 'liberado', 'em_chamada'];
 const ROOM_PRESENCE_TABLE = 'sala_status';
 const ROOM_PRESENCE_KEY = 'amanda';
 const ROOM_PRESENCE_HEARTBEAT_MS = 10000;
+const ROOM_MESSAGE_LIMIT = 1000;
 const ROOM_ORIGINAL_TITLE = document.title;
 
 let roomRows = [];
 let roomTimer = null;
 let roomPresenceTimer = null;
 let roomKnownWaitingIds = new Set();
+let roomKnownCallingIds = new Set();
+let roomCallsHydrated = false;
 let roomAlertsEnabled = false;
 let roomAudioContext = null;
 let roomInitialLoad = true;
@@ -21,6 +24,8 @@ let roomTitleAlertTimer = null;
 let roomRowsRenderKey = '';
 let roomKnownUserMessageIds = new Set();
 let roomMessagesHydrated = false;
+let roomIncomingCallId = null;
+let roomJitsiApis = new Map();
 
 function getRoomUser() {
   try {
@@ -55,10 +60,89 @@ function getRoomVideoUrl(rowOrId) {
   return `${ROOM_VIDEO_BASE_URL}/AmandaVip-${String(id || Date.now()).replace(/[^a-zA-Z0-9]/g, '')}`;
 }
 
+function getRoomVideoRoomName(rowOrId) {
+  const url = getRoomVideoUrl(rowOrId);
+
+  try {
+    const parsed = new URL(url);
+    const room = parsed.pathname.split('/').filter(Boolean).pop();
+
+    if (room) {
+      return room;
+    }
+  } catch (error) {
+    // Usa fallback abaixo quando vier um valor antigo.
+  }
+
+  const id = typeof rowOrId === 'object' ? rowOrId?.id : rowOrId;
+  return `AmandaVip-${String(id || Date.now()).replace(/[^a-zA-Z0-9]/g, '')}`;
+}
+
 function buildRoomVideoEmbedUrl(rowOrId, displayName = 'Amanda') {
   const encodedName = encodeURIComponent(displayName);
 
-  return `${getRoomVideoUrl(rowOrId)}#userInfo.displayName="${encodedName}"&config.prejoinPageEnabled=false&config.disableDeepLinking=true`;
+  return `${getRoomVideoUrl(rowOrId)}#userInfo.displayName="${encodedName}"&config.prejoinPageEnabled=false&config.disableDeepLinking=true&config.startWithAudioMuted=false&config.startWithVideoMuted=false`;
+}
+
+function disposeRoomJitsi(id) {
+  const api = roomJitsiApis.get(id);
+
+  if (!api) {
+    return;
+  }
+
+  try {
+    api.dispose();
+  } catch (error) {
+    console.warn('Nao consegui fechar chamada de video:', error);
+  }
+
+  roomJitsiApis.delete(id);
+}
+
+function mountRoomJitsiMeeting(id, rowOrId, displayName = 'Amanda') {
+  const stage = document.getElementById(`room-video-${id}`);
+  const frame = stage?.querySelector('[data-room-video-frame]');
+
+  if (!stage || !frame) {
+    return;
+  }
+
+  disposeRoomJitsi(id);
+  frame.innerHTML = '';
+
+  if (window.JitsiMeetExternalAPI) {
+    const api = new window.JitsiMeetExternalAPI('meet.jit.si', {
+      roomName: getRoomVideoRoomName(rowOrId),
+      parentNode: frame,
+      width: '100%',
+      height: '100%',
+      userInfo: { displayName },
+      configOverwrite: {
+        prejoinPageEnabled: false,
+        disableDeepLinking: true,
+        startWithAudioMuted: false,
+        startWithVideoMuted: false
+      },
+      interfaceConfigOverwrite: {
+        MOBILE_APP_PROMO: false,
+        SHOW_JITSI_WATERMARK: false,
+        SHOW_BRAND_WATERMARK: false,
+        SHOW_POWERED_BY: false
+      }
+    });
+    roomJitsiApis.set(id, api);
+  } else {
+    const iframe = document.createElement('iframe');
+    iframe.title = 'Chamada de video';
+    iframe.allow = 'camera; microphone; fullscreen; display-capture; autoplay';
+    iframe.allowFullscreen = true;
+    iframe.src = buildRoomVideoEmbedUrl(rowOrId, displayName);
+    frame.appendChild(iframe);
+  }
+
+  stage.hidden = false;
+  stage.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function setRoomStatus(message, isError = false) {
@@ -103,6 +187,7 @@ function formatRoomWait(value) {
 function getRoomStatusLabel(status) {
   const labels = {
     aguardando: 'Aguardando',
+    chamando: 'Chamando',
     liberado: 'Liberado',
     em_chamada: 'Em chamada',
     finalizado: 'Finalizado',
@@ -136,7 +221,7 @@ function playRoomAlert() {
   }
 }
 
-function showRoomAlertPopup(count) {
+function showRoomAlertPopup(count, message = '') {
   const popup = document.getElementById('room-alert-popup');
   const text = document.getElementById('room-alert-popup-text');
 
@@ -145,7 +230,7 @@ function showRoomAlertPopup(count) {
   }
 
   if (text) {
-    text.textContent = `${count} pessoa(s) aguardando chamada previa agora.`;
+    text.textContent = message || `${count} pessoa(s) aguardando chamada previa agora.`;
   }
 
   popup.hidden = false;
@@ -184,16 +269,62 @@ function flashRoomTitle(count) {
   }, 900);
 }
 
-function notifyRoomAlert(count) {
-  showRoomAlertPopup(count);
+function notifyRoomAlert(count, message = '') {
+  showRoomAlertPopup(count, message);
   flashRoomTitle(count);
   playRoomAlert();
 
   if ('Notification' in window && Notification.permission === 'granted') {
     new Notification('Chamada previa', {
-      body: `${count} pessoa(s) aguardando na sala virtual.`
+      body: message || `${count} pessoa(s) aguardando na sala virtual.`
     });
   }
+}
+
+function showIncomingCallPopup(row) {
+  const popup = document.getElementById('room-incoming-call');
+  const title = document.getElementById('room-incoming-title');
+  const meta = document.getElementById('room-incoming-meta');
+
+  if (!popup || !row?.id) {
+    return;
+  }
+
+  roomIncomingCallId = row.id;
+
+  if (title) {
+    title.textContent = `${row.username || 'Anonimo'} esta chamando`;
+  }
+
+  if (meta) {
+    meta.textContent = `IP ${row.ip || 'sem IP'} - ${formatRoomWait(row.updated_at || row.created_at)} chamando`;
+  }
+
+  popup.hidden = false;
+}
+
+function hideIncomingCallPopup() {
+  const popup = document.getElementById('room-incoming-call');
+
+  if (popup) {
+    popup.hidden = true;
+  }
+
+  roomIncomingCallId = null;
+}
+
+function updateIncomingCallPopup(rows) {
+  const callingRows = rows.filter((row) => row.status === 'chamando');
+  const current = roomIncomingCallId
+    ? callingRows.find((row) => row.id === roomIncomingCallId)
+    : callingRows[0];
+
+  if (!current) {
+    hideIncomingCallPopup();
+    return;
+  }
+
+  showIncomingCallPopup(current);
 }
 
 async function enableRoomAlerts() {
@@ -218,7 +349,7 @@ async function enableRoomAlerts() {
 function watchNewWaitingRows(rows) {
   const waitingIds = new Set(
     rows
-      .filter((row) => row.status === 'aguardando')
+      .filter((row) => row.status === 'aguardando' || row.status === 'chamando')
       .map((row) => row.id)
       .filter(Boolean)
   );
@@ -227,12 +358,29 @@ function watchNewWaitingRows(rows) {
     const newIds = [...waitingIds].filter((id) => !roomKnownWaitingIds.has(id));
 
     if (newIds.length) {
-      notifyRoomAlert(newIds.length);
+      notifyRoomAlert(newIds.length, `${newIds.length} pessoa(s) aguardando atendimento agora.`);
     }
   }
 
   roomKnownWaitingIds = waitingIds;
   roomInitialLoad = false;
+}
+
+function watchIncomingCalls(rows) {
+  const callingIds = new Set(
+    rows
+      .filter((row) => row.status === 'chamando')
+      .map((row) => row.id)
+      .filter(Boolean)
+  );
+  const newCallingIds = [...callingIds].filter((id) => !roomKnownCallingIds.has(id));
+
+  if (roomCallsHydrated && newCallingIds.length) {
+    notifyRoomAlert(newCallingIds.length, 'Chamada de video recebida. Atenda na sala virtual.');
+  }
+
+  roomKnownCallingIds = callingIds;
+  roomCallsHydrated = true;
 }
 
 async function sendRoomPresence(isOnline = true) {
@@ -324,6 +472,7 @@ function renderRoomRows() {
 
   container.innerHTML = roomRows.map((row) => {
     const isWaiting = row.status === 'aguardando';
+    const isCalling = row.status === 'chamando';
     const isReleased = row.status === 'liberado';
     const isInCall = row.status === 'em_chamada';
     const canOpenVideo = isReleased || isInCall;
@@ -360,20 +509,20 @@ function renderRoomRows() {
           </form>
         </div>
         <div class="room-video-stage" id="room-video-${escapeRoom(row.id)}" hidden>
-          <iframe
-            title="Videochamada com ${escapeRoom(row.username || 'usuario')}"
-            allow="camera; microphone; fullscreen; display-capture; autoplay"
-            allowfullscreen
-          ></iframe>
+          <div
+            class="room-video-frame"
+            data-room-video-frame
+            aria-label="Chamada de video com ${escapeRoom(row.username || 'usuario')}"
+          ></div>
         </div>
         <div class="virtual-room-actions">
           <button
             class="btn-primary"
             type="button"
-            onclick="releasePreviewCall('${escapeRoom(row.id)}')"
-            ${isWaiting ? '' : 'disabled'}
+            onclick="acceptIncomingCall('${escapeRoom(row.id)}')"
+            ${isCalling ? '' : 'disabled'}
           >
-            Habilitar
+            Atender agora
           </button>
           <button
             class="btn-secondary"
@@ -381,7 +530,7 @@ function renderRoomRows() {
             onclick="openAdminVideoCall('${escapeRoom(row.id)}')"
             ${canOpenVideo ? '' : 'disabled'}
           >
-            Abrir video aqui
+            Abrir chamada de video
           </button>
           <button
             class="btn-secondary"
@@ -394,8 +543,8 @@ function renderRoomRows() {
           <button
             class="btn-secondary"
             type="button"
-            onclick="cancelPreviewCall('${escapeRoom(row.id)}')"
-            ${isWaiting ? '' : 'disabled'}
+            onclick="${isCalling ? 'declineIncomingCall' : 'cancelPreviewCall'}('${escapeRoom(row.id)}')"
+            ${isWaiting || isCalling ? '' : 'disabled'}
           >
             Cancelar
           </button>
@@ -446,6 +595,7 @@ function renderRoomChatMessages(chamadaId, messages) {
 
 async function loadRoomMessagesForRows() {
   if (!roomRows.length) {
+    loadRoomMessageStats();
     return;
   }
 
@@ -482,10 +632,65 @@ async function loadRoomMessagesForRows() {
   }));
 
   if (roomMessagesHydrated && newUserMessages.length) {
-    notifyRoomAlert(newUserMessages.length);
+    notifyRoomAlert(newUserMessages.length, `${newUserMessages.length} nova(s) mensagem(ns) no chat.`);
   }
 
   roomMessagesHydrated = true;
+  loadRoomMessageStats();
+}
+
+async function loadRoomMessageStats() {
+  const countEl = document.getElementById('room-message-count');
+  const fillEl = document.getElementById('room-message-progress-fill');
+  const button = document.getElementById('room-clear-messages');
+
+  if (!countEl || !fillEl) {
+    return;
+  }
+
+  const { count, error } = await _supa
+    .from(ROOM_MESSAGES_TABLE)
+    .select('id', { count: 'exact', head: true });
+
+  if (error) {
+    console.warn('Nao consegui contar mensagens:', error.message || error);
+    countEl.textContent = 'Nao carregou';
+    return;
+  }
+
+  const total = count || 0;
+  const percent = Math.min(100, Math.round((total / ROOM_MESSAGE_LIMIT) * 100));
+
+  countEl.textContent = `${total} / ${ROOM_MESSAGE_LIMIT}`;
+  fillEl.style.width = `${percent}%`;
+  fillEl.classList.toggle('is-warning', percent >= 70);
+  fillEl.classList.toggle('is-full', percent >= 100);
+
+  if (button) {
+    button.disabled = total <= 0;
+  }
+}
+
+async function clearRoomMessages() {
+  if (!window.confirm('Apagar todas as mensagens salvas dos chats?')) {
+    return;
+  }
+
+  const { error } = await _supa
+    .from(ROOM_MESSAGES_TABLE)
+    .delete()
+    .not('id', 'is', null);
+
+  if (error) {
+    console.error('Erro ao apagar mensagens:', error);
+    alert('Nao consegui apagar as mensagens agora.');
+    return;
+  }
+
+  roomKnownUserMessageIds = new Set();
+  roomMessagesHydrated = false;
+  await loadRoomMessagesForRows();
+  await loadRoomMessageStats();
 }
 
 async function loadRoomRows() {
@@ -505,7 +710,10 @@ async function loadRoomRows() {
 
   roomRows = data || [];
   watchNewWaitingRows(roomRows);
+  watchIncomingCalls(roomRows);
   renderRoomRows();
+  updateIncomingCallPopup(roomRows);
+  loadRoomMessageStats();
   setRoomStatus(`Atualizado agora. ${roomRows.length} pessoa(s) na fila.`);
 }
 
@@ -576,20 +784,17 @@ async function sendRoomMessage(event, chamadaId) {
 
 function openAdminVideoCall(id) {
   const row = roomRows.find((item) => item.id === id);
-  const stage = document.getElementById(`room-video-${id}`);
-  const frame = stage?.querySelector('iframe');
 
-  if (!stage || !frame) {
+  if (!row) {
     return;
   }
 
-  frame.src = buildRoomVideoEmbedUrl(row || id, 'Amanda');
-  stage.hidden = false;
-  stage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  mountRoomJitsiMeeting(id, row, 'Amanda');
 }
 
-async function releasePreviewCall(id) {
-  const videoUrl = getRoomVideoUrl(id);
+async function acceptIncomingCall(id) {
+  const row = roomRows.find((item) => item.id === id);
+  const videoUrl = getRoomVideoUrl(row || id);
 
   await updatePreviewCall(id, {
     status: 'liberado',
@@ -599,8 +804,27 @@ async function releasePreviewCall(id) {
 
   await insertRoomSystemMessage(
     id,
-    'Amanda liberou a videochamada. Toque em Entrar na videochamada.'
+    'Amanda atendeu a chamada de video.'
   );
+  hideIncomingCallPopup();
+  openAdminVideoCall(id);
+  loadRoomMessagesForRows();
+}
+
+async function releasePreviewCall(id) {
+  return acceptIncomingCall(id);
+}
+
+async function declineIncomingCall(id) {
+  await updatePreviewCall(id, {
+    status: 'aguardando'
+  });
+
+  await insertRoomSystemMessage(
+    id,
+    'Amanda nao atendeu a chamada de video. Tente novamente mais tarde.'
+  );
+  hideIncomingCallPopup();
   loadRoomMessagesForRows();
 }
 
@@ -611,6 +835,7 @@ async function finishPreviewCall(id) {
   });
 
   await insertRoomSystemMessage(id, 'Chamada finalizada por Amanda.');
+  disposeRoomJitsi(id);
   loadRoomMessagesForRows();
 }
 
@@ -647,6 +872,17 @@ function setupVirtualRoom() {
 
   document.getElementById('room-refresh')?.addEventListener('click', loadRoomRows);
   document.getElementById('room-alerts')?.addEventListener('click', enableRoomAlerts);
+  document.getElementById('room-clear-messages')?.addEventListener('click', clearRoomMessages);
+  document.getElementById('room-answer-incoming')?.addEventListener('click', () => {
+    if (roomIncomingCallId) {
+      acceptIncomingCall(roomIncomingCallId);
+    }
+  });
+  document.getElementById('room-decline-incoming')?.addEventListener('click', () => {
+    if (roomIncomingCallId) {
+      declineIncomingCall(roomIncomingCallId);
+    }
+  });
   window.addEventListener('focus', refreshRoomPresenceNow);
   window.addEventListener('pageshow', refreshRoomPresenceNow);
   document.addEventListener('visibilitychange', () => {
@@ -674,6 +910,14 @@ window.addEventListener('beforeunload', () => {
   }
 
   stopRoomPresence();
+  roomJitsiApis.forEach((api) => {
+    try {
+      api.dispose();
+    } catch (error) {
+      console.warn('Nao consegui fechar chamada de video:', error);
+    }
+  });
+  roomJitsiApis = new Map();
 });
 
 document.addEventListener('DOMContentLoaded', setupVirtualRoom);
