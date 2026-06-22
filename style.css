@@ -1286,6 +1286,82 @@ body.modal-open {
   font-size: 0.84rem;
 }
 
+.telegram-call-ringing-actions {
+  width: min(100%, 360px);
+  display: grid;
+  grid-template-columns: 1fr 0.72fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.telegram-call-ringing-actions button {
+  min-height: 56px;
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.telegram-call-ringing-actions button[hidden] {
+  display: none !important;
+}
+
+.ring-answer-button {
+  background: linear-gradient(135deg, #29e6a7, #168cff);
+  box-shadow:
+    0 18px 32px rgba(22, 140, 255, 0.24),
+    0 0 0 0 rgba(41, 230, 167, 0.42);
+  animation: answerCallShake 0.82s ease-in-out infinite, answerCallGlow 1.2s ease-out infinite;
+}
+
+.ring-answer-button::before {
+  content: "☎";
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.ring-decline-button {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+}
+
+@keyframes answerCallShake {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+  }
+  15% {
+    transform: translate3d(-2px, 0, 0) rotate(-1.5deg) scale(1.02);
+  }
+  30% {
+    transform: translate3d(3px, 0, 0) rotate(1.5deg) scale(1.045);
+  }
+  45% {
+    transform: translate3d(-2px, 0, 0) rotate(-1deg) scale(1.02);
+  }
+  60% {
+    transform: translate3d(2px, 0, 0) rotate(1deg) scale(1.04);
+  }
+}
+
+@keyframes answerCallGlow {
+  0% {
+    box-shadow:
+      0 18px 32px rgba(22, 140, 255, 0.24),
+      0 0 0 0 rgba(41, 230, 167, 0.42);
+  }
+  100% {
+    box-shadow:
+      0 18px 32px rgba(22, 140, 255, 0.24),
+      0 0 0 18px rgba(41, 230, 167, 0);
+  }
+}
+
 .telegram-call-avatar {
   position: relative;
   width: 96px;
@@ -1348,6 +1424,51 @@ body.modal-open {
   background: #000;
 }
 
+.telegram-chat-card.is-ringing {
+  min-height: min(92dvh, 720px);
+}
+
+.telegram-chat-card.is-ringing .telegram-chat-messages,
+.telegram-chat-card.is-ringing .telegram-chat-actions,
+.telegram-chat-card.is-ringing .telegram-chat-form {
+  display: none !important;
+}
+
+.telegram-chat-card.is-ringing .telegram-call-ringing {
+  flex: 1 1 auto;
+  align-content: center;
+  min-height: 430px;
+  border-bottom: 0;
+}
+
+.telegram-chat-card.is-in-call {
+  width: min(430px, calc(100vw - 20px));
+  height: min(100dvh - 16px, 860px);
+  max-height: none;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 26px;
+  background: #000;
+}
+
+.telegram-chat-card.is-in-call .call-modal-close,
+.telegram-chat-card.is-in-call .telegram-chat-header,
+.telegram-chat-card.is-in-call .telegram-call-ringing,
+.telegram-chat-card.is-in-call .telegram-chat-messages,
+.telegram-chat-card.is-in-call .telegram-chat-actions,
+.telegram-chat-card.is-in-call .telegram-chat-form {
+  display: none !important;
+}
+
+.telegram-chat-card.is-in-call .telegram-video-stage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  aspect-ratio: auto;
+  border-bottom: 0;
+}
+
 .sim-call-screen {
   position: relative;
   width: 100%;
@@ -1402,13 +1523,14 @@ body.modal-open {
 
 .sim-call-local {
   position: absolute;
-  right: 12px;
-  top: 52px;
-  width: min(31%, 118px);
+  right: 14px;
+  top: auto;
+  bottom: 138px;
+  width: min(32%, 132px);
   aspect-ratio: 3 / 4;
   overflow: hidden;
   border-radius: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.46);
   background: rgba(0, 0, 0, 0.72);
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.38);
 }
@@ -1444,48 +1566,110 @@ body.modal-open {
 .sim-call-top,
 .sim-call-bottom {
   position: absolute;
-  left: 12px;
-  right: 12px;
   z-index: 2;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
 }
 
 .sim-call-top {
-  top: 12px;
-  justify-content: flex-start;
-  width: fit-content;
-  max-width: calc(100% - 24px);
+  top: 24px;
+  left: 18px;
+  right: 18px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.6);
+}
+
+.sim-call-top strong {
+  font-size: clamp(2rem, 8vw, 2.85rem);
+  font-weight: 500;
+  line-height: 1.05;
+}
+
+.sim-call-top span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 1.2rem;
+}
+
+.sim-call-top span i {
+  width: 24px;
+  height: 18px;
+  display: inline-block;
+  background:
+    linear-gradient(to top, rgba(255, 255, 255, 0.8) 0 35%, transparent 35%),
+    linear-gradient(to top, rgba(255, 255, 255, 0.8) 0 58%, transparent 58%),
+    linear-gradient(to top, rgba(255, 255, 255, 0.8) 0 82%, transparent 82%);
+  background-size: 5px 100%;
+  background-position: 0 0, 8px 0, 16px 0;
+  background-repeat: no-repeat;
+}
+
+.sim-call-top em {
+  margin-top: 36px;
   border-radius: 999px;
-  padding: 8px 11px;
-  background: rgba(0, 0, 0, 0.5);
+  padding: 8px 15px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.36);
   backdrop-filter: blur(10px);
-  font-size: 0.82rem;
+  font-style: normal;
+  font-size: 1rem;
+}
+
+.sim-call-emojis {
+  font-size: 1.42rem;
+  letter-spacing: 0.18em;
 }
 
 .sim-call-bottom {
-  bottom: 14px;
-  border-radius: 18px;
-  padding: 10px;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(12px);
+  left: 0;
+  right: 0;
+  bottom: 22px;
+  justify-content: space-around;
+  padding: 0 18px;
 }
 
-.sim-call-bottom span {
-  font-weight: 800;
-  letter-spacing: 0.04em;
-}
-
-.sim-call-end {
+.sim-call-control {
+  width: 76px;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
   border: 0;
-  border-radius: 999px;
-  padding: 10px 14px;
   color: #fff;
-  background: linear-gradient(135deg, #e53935, #b71c1c);
-  font-weight: 800;
+  background: transparent;
+  font-size: 0.82rem;
+  font-weight: 700;
   cursor: pointer;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.42);
+}
+
+.sim-call-control b {
+  width: 62px;
+  height: 62px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.88);
+  color: #111;
+  font-size: 1.7rem;
+  font-weight: 900;
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.26);
+}
+
+.sim-call-control.is-muted b {
+  background: rgba(255, 255, 255, 0.28);
+  color: #fff;
+}
+
+.sim-call-control.is-end b {
+  background: #ff2346;
+  color: #fff;
+  font-size: 1.9rem;
 }
 
 .sim-call-progress {
@@ -2728,17 +2912,47 @@ body.modal-open {
     max-height: 58dvh;
   }
 
+  .telegram-chat-card.is-in-call {
+    width: 100vw;
+    height: 100dvh;
+    border-radius: 0;
+  }
+
+  .telegram-chat-card.is-in-call .telegram-video-stage {
+    height: 100dvh;
+    max-height: none;
+  }
+
   .sim-call-local {
     right: 10px;
-    top: 48px;
+    top: auto;
+    bottom: 132px;
     width: min(34%, 108px);
     border-radius: 14px;
   }
 
   .sim-call-bottom {
-    left: 10px;
-    right: 10px;
     bottom: 10px;
+    padding: 0 10px;
+  }
+
+  .sim-call-control {
+    width: 72px;
+    font-size: 0.76rem;
+  }
+
+  .sim-call-control b {
+    width: 58px;
+    height: 58px;
+    font-size: 1.48rem;
+  }
+
+  .sim-call-top {
+    top: 28px;
+  }
+
+  .sim-call-top em {
+    margin-top: 24px;
   }
 
   .telegram-chat-form,

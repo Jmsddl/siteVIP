@@ -10,7 +10,7 @@ const DEFAULT_VIP_CONFIG = {
   mensagem_foto: 'Para ver todas as fotos sem censura, assine o VIP com {contato}.',
   preview_segundos: DEMO_PREVIEW_MAX_SECONDS,
   chamada_previa_video_url: '',
-  chamada_previa_duracao: 18
+  chamada_previa_duracao: 0
 };
 const DEFAULT_VIP_OFFERS = [
   {
@@ -130,7 +130,14 @@ let previewCallRingTimer = null;
 let previewIncomingPollTimer = null;
 let previewSimulatedFinishTimer = null;
 let previewSimulatedProgressTimer = null;
+let previewSimulatedMetadataTimer = null;
+let previewVibrationTimer = null;
+let previewRingAudioTimer = null;
+let previewRingAudioContext = null;
 let previewCameraStream = null;
+let previewCameraFacingMode = 'user';
+let previewMicEnabled = false;
+let previewCameraEnabled = true;
 let previewJitsiApi = null;
 let previewAutoJoinPending = false;
 let previewIncomingCallKey = '';
@@ -272,6 +279,8 @@ function setupAdminAnalyticsLink() {
 }
 
 function normalizeVipConfig(config) {
+  const configuredCallDuration = Number(config?.chamada_previa_duracao);
+
   return {
     ...DEFAULT_VIP_CONFIG,
     ...(config || {}),
@@ -280,13 +289,9 @@ function normalizeVipConfig(config) {
       Math.max(1, Number(config?.preview_segundos || DEFAULT_VIP_CONFIG.preview_segundos))
     ),
     chamada_previa_video_url: String(config?.chamada_previa_video_url || '').trim(),
-    chamada_previa_duracao: Math.min(
-      60,
-      Math.max(
-        5,
-        Number(config?.chamada_previa_duracao || DEFAULT_VIP_CONFIG.chamada_previa_duracao)
-      )
-    )
+    chamada_previa_duracao: Number.isFinite(configuredCallDuration) && configuredCallDuration > 0
+      ? Math.min(180, Math.max(5, configuredCallDuration))
+      : 0
   };
 }
 
@@ -514,11 +519,114 @@ function showPreviewCompleteShortcut(show) {
   }
 }
 
+function setPreviewCardMode(mode = '') {
+  const card = document.querySelector('#preview-call-modal .telegram-chat-card');
+
+  if (!card) {
+    return;
+  }
+
+  card.classList.toggle('is-ringing', mode === 'ringing');
+  card.classList.toggle('is-in-call', mode === 'call');
+}
+
+function setPreviewRingingActions({ answer = false, decline = true } = {}) {
+  const answerButton = document.getElementById('preview-call-ring-answer');
+  const declineButton = document.getElementById('preview-call-ring-decline');
+
+  if (answerButton) {
+    answerButton.hidden = !answer;
+  }
+
+  if (declineButton) {
+    declineButton.hidden = !decline;
+  }
+}
+
+function stopPreviewRingFeedback() {
+  if (previewVibrationTimer) {
+    window.clearInterval(previewVibrationTimer);
+    previewVibrationTimer = null;
+  }
+
+  if (previewRingAudioTimer) {
+    window.clearInterval(previewRingAudioTimer);
+    previewRingAudioTimer = null;
+  }
+
+  try {
+    navigator.vibrate?.(0);
+  } catch (error) {
+    // Alguns navegadores ignoram vibracao.
+  }
+}
+
+function playPreviewRingTone() {
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+
+    if (!AudioContextClass) {
+      return;
+    }
+
+    if (!previewRingAudioContext) {
+      previewRingAudioContext = new AudioContextClass();
+    }
+
+    previewRingAudioContext.resume?.();
+
+    const oscillator = previewRingAudioContext.createOscillator();
+    const gain = previewRingAudioContext.createGain();
+    const startAt = previewRingAudioContext.currentTime;
+
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(760, startAt);
+    gain.gain.setValueAtTime(0.0001, startAt);
+    gain.gain.exponentialRampToValueAtTime(0.12, startAt + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.42);
+    oscillator.connect(gain);
+    gain.connect(previewRingAudioContext.destination);
+    oscillator.start(startAt);
+    oscillator.stop(startAt + 0.46);
+  } catch (error) {
+    // Autoplay de audio pode ser bloqueado ate haver interacao do usuario.
+  }
+}
+
+function startPreviewRingFeedback({ sound = false } = {}) {
+  stopPreviewRingFeedback();
+
+  try {
+    navigator.vibrate?.([420, 140, 420, 520]);
+  } catch (error) {
+    // Vibracao e apenas reforco no celular.
+  }
+
+  previewVibrationTimer = window.setInterval(() => {
+    try {
+      navigator.vibrate?.([420, 140, 420, 520]);
+    } catch (error) {
+      // Ignora quando o aparelho/navegador nao suporta.
+    }
+  }, 1500);
+
+  if (sound) {
+    playPreviewRingTone();
+    previewRingAudioTimer = window.setInterval(playPreviewRingTone, 1450);
+  }
+}
+
 function setPreviewRingingVisible(show) {
   const ringing = document.getElementById('preview-call-ringing');
 
   if (ringing) {
     ringing.hidden = !show;
+  }
+
+  setPreviewCardMode(show ? 'ringing' : '');
+
+  if (!show) {
+    stopPreviewRingFeedback();
   }
 }
 
@@ -542,6 +650,69 @@ function stopPreviewRinging() {
   if (previewCallRingTimer) {
     window.clearTimeout(previewCallRingTimer);
     previewCallRingTimer = null;
+  }
+}
+
+function updateSimulatedCallControls(container = document) {
+  const micButton = container.querySelector('[data-sim-toggle-mic]');
+  const cameraButton = container.querySelector('[data-sim-toggle-camera]');
+  const cameraBlocked = container.querySelector('[data-sim-camera-blocked]');
+
+  if (micButton) {
+    micButton.classList.toggle('is-muted', !previewMicEnabled);
+    micButton.querySelector('span').textContent = previewMicEnabled ? 'Silenciar' : 'Ativar som';
+  }
+
+  if (cameraButton) {
+    cameraButton.classList.toggle('is-muted', !previewCameraEnabled);
+    cameraButton.querySelector('span').textContent = previewCameraEnabled ? 'Parar Video' : 'Ativar Video';
+  }
+
+  if (cameraBlocked) {
+    cameraBlocked.hidden = previewCameraEnabled && Boolean(previewCameraStream?.getVideoTracks().length);
+    cameraBlocked.textContent = previewCameraEnabled ? 'Camera nao liberada' : 'Camera desligada';
+  }
+}
+
+async function registerPreviewCameraState(status, message) {
+  if (!previewCallRecord?.id) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const details = {
+    ...getPreviewCallDetails(previewCallRecord),
+    simulated_call: true,
+    camera_status: status,
+    camera_status_updated_at: now
+  };
+
+  previewCallRecord = {
+    ...previewCallRecord,
+    detalhes: details
+  };
+
+  try {
+    await _supa
+      .from(PREVIEW_CALL_TABLE)
+      .update({
+        detalhes: details,
+        updated_at: now
+      })
+      .eq('id', previewCallRecord.id);
+
+    if (message) {
+      await _supa
+        .from(PREVIEW_CALL_MESSAGES_TABLE)
+        .insert({
+          chamada_id: previewCallRecord.id,
+          autor_tipo: 'sistema',
+          autor_nome: 'Sistema',
+          texto: message
+        });
+    }
+  } catch (error) {
+    console.warn('Nao consegui registrar estado da camera:', error.message || error);
   }
 }
 
@@ -584,11 +755,12 @@ function getSimulatedPreviewDuration(record) {
     details.chamada_previa_duracao ||
     details.preview_duration ||
     details.simulated_duration ||
-    vipConfig.chamada_previa_duracao ||
-    PREVIEW_SIMULATED_CALL_DEFAULT_SECONDS
+    vipConfig.chamada_previa_duracao
   );
 
-  return Math.min(60, Math.max(5, Number.isFinite(seconds) ? seconds : PREVIEW_SIMULATED_CALL_DEFAULT_SECONDS));
+  return Number.isFinite(seconds) && seconds > 0
+    ? Math.min(180, Math.max(5, seconds))
+    : 0;
 }
 
 function clearPreviewSimulatedTimers() {
@@ -601,6 +773,11 @@ function clearPreviewSimulatedTimers() {
     window.clearInterval(previewSimulatedProgressTimer);
     previewSimulatedProgressTimer = null;
   }
+
+  if (previewSimulatedMetadataTimer) {
+    window.clearTimeout(previewSimulatedMetadataTimer);
+    previewSimulatedMetadataTimer = null;
+  }
 }
 
 function stopPreviewCameraStream() {
@@ -610,39 +787,120 @@ function stopPreviewCameraStream() {
 
   previewCameraStream.getTracks().forEach((track) => track.stop());
   previewCameraStream = null;
+  previewMicEnabled = false;
+  previewCameraEnabled = true;
 }
 
-async function requestPreviewCameraStream() {
-  stopPreviewCameraStream();
+async function requestPreviewCameraStream(facingMode = previewCameraFacingMode, options = {}) {
+  if (previewCameraStream) {
+    previewCameraStream.getVideoTracks().forEach((track) => track.stop());
+    previewCameraStream.getVideoTracks().forEach((track) => previewCameraStream.removeTrack(track));
+  }
 
   if (!navigator.mediaDevices?.getUserMedia) {
     return null;
   }
 
   try {
-    previewCameraStream = await navigator.mediaDevices.getUserMedia({
+    const videoStream = await navigator.mediaDevices.getUserMedia({
       video: {
-        facingMode: 'user',
+        facingMode,
         width: { ideal: 640 },
         height: { ideal: 960 }
       },
       audio: false
     });
 
-    trackEvent('permitiu_camera_chamada_previa', {
-      alvo_tipo: 'chamada_previa',
-      alvo_titulo: 'Camera local liberada'
-    });
+    if (!previewCameraStream) {
+      previewCameraStream = new MediaStream();
+    }
+
+    videoStream.getVideoTracks().forEach((track) => previewCameraStream.addTrack(track));
+    previewCameraFacingMode = facingMode;
+    previewCameraEnabled = true;
+    if (!options.silent) {
+      trackEvent('permitiu_camera_chamada_previa', {
+        alvo_tipo: 'chamada_previa',
+        alvo_titulo: 'Camera local liberada'
+      });
+    }
 
     return previewCameraStream;
   } catch (error) {
     console.warn('Camera local nao liberada para chamada previa:', error.message || error);
-    trackEvent('bloqueou_camera_chamada_previa', {
-      alvo_tipo: 'chamada_previa',
-      alvo_titulo: 'Camera local bloqueada'
-    });
+    if (!options.silent) {
+      trackEvent('bloqueou_camera_chamada_previa', {
+        alvo_tipo: 'chamada_previa',
+        alvo_titulo: 'Camera local bloqueada'
+      });
+    }
     return null;
   }
+}
+
+async function flipPreviewCamera() {
+  const localVideo = document.querySelector('[data-sim-local-video]');
+  const nextFacingMode = previewCameraFacingMode === 'user' ? 'environment' : 'user';
+  const stream = await requestPreviewCameraStream(nextFacingMode, { silent: true });
+
+  if (stream && localVideo) {
+    localVideo.srcObject = stream;
+    localVideo.play?.().catch(() => {});
+  }
+
+  updateSimulatedCallControls(document);
+}
+
+function togglePreviewCamera() {
+  previewCameraEnabled = !previewCameraEnabled;
+
+  previewCameraStream?.getVideoTracks().forEach((track) => {
+    track.enabled = previewCameraEnabled;
+  });
+
+  registerPreviewCameraState(
+    previewCameraEnabled ? 'ligada' : 'desligada',
+    previewCameraEnabled
+      ? 'Visitante ligou a camera durante a chamada previa.'
+      : 'Visitante desligou a camera durante a chamada previa.'
+  );
+  trackEvent(previewCameraEnabled ? 'ligou_camera_chamada_previa' : 'desligou_camera_chamada_previa', {
+    alvo_tipo: 'chamada_previa',
+    alvo_titulo: previewCameraEnabled ? 'Ligou camera' : 'Desligou camera'
+  });
+  updateSimulatedCallControls(document);
+}
+
+async function togglePreviewMic() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    previewMicEnabled = false;
+    updateSimulatedCallControls(document);
+    return;
+  }
+
+  if (!previewMicEnabled && !previewCameraStream?.getAudioTracks().length) {
+    try {
+      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+
+      if (!previewCameraStream) {
+        previewCameraStream = new MediaStream();
+      }
+
+      audioStream.getAudioTracks().forEach((track) => previewCameraStream.addTrack(track));
+    } catch (error) {
+      console.warn('Microfone local nao liberado:', error.message || error);
+      previewMicEnabled = false;
+      updateSimulatedCallControls(document);
+      return;
+    }
+  }
+
+  previewMicEnabled = !previewMicEnabled;
+  previewCameraStream?.getAudioTracks().forEach((track) => {
+    track.enabled = previewMicEnabled;
+  });
+
+  updateSimulatedCallControls(document);
 }
 
 function renderSimulatedPreviewFallback(container) {
@@ -711,10 +969,16 @@ async function finishSimulatedPreviewCall(reason = 'tempo_esgotado') {
 
 async function mountSimulatedPreviewCall(container, record) {
   const videoUrl = getSimulatedPreviewVideoUrl(record);
-  const duration = getSimulatedPreviewDuration(record);
+  const configuredDuration = getSimulatedPreviewDuration(record);
+  const initialDuration = configuredDuration || PREVIEW_SIMULATED_CALL_DEFAULT_SECONDS;
+  let countdownStarted = false;
 
   clearPreviewSimulatedTimers();
   stopPreviewCameraStream();
+  previewCameraFacingMode = 'user';
+  previewMicEnabled = false;
+  previewCameraEnabled = true;
+  setPreviewCardMode('call');
   container.innerHTML = `
     <div class="sim-call-screen">
       <div class="sim-call-main" data-sim-main>
@@ -723,7 +987,6 @@ async function mountSimulatedPreviewCall(container, record) {
           data-sim-amanda-video
           autoplay
           muted
-          loop
           playsinline
           preload="auto"
           controlslist="nodownload noplaybackrate"
@@ -742,12 +1005,28 @@ async function mountSimulatedPreviewCall(container, record) {
         </div>
       </div>
       <div class="sim-call-top">
-        <span class="chat-presence-dot is-online"></span>
-        Amanda esta na chamada
+        <div class="sim-call-emojis" aria-hidden="true">😱 🍕 🐙 🇫🇷</div>
+        <strong>Amanda Oliveira</strong>
+        <span><i></i> <b data-sim-call-time>00:${String(initialDuration).padStart(2, '0')}</b></span>
+        <em>Sinal de rede fraco</em>
       </div>
       <div class="sim-call-bottom">
-        <span data-sim-call-time>00:${String(duration).padStart(2, '0')}</span>
-        <button class="sim-call-end" type="button" data-sim-end-call>Encerrar</button>
+        <button class="sim-call-control" type="button" data-sim-flip-camera>
+          <b>↻</b>
+          <span>Virar</span>
+        </button>
+        <button class="sim-call-control" type="button" data-sim-toggle-camera>
+          <b>▮▶</b>
+          <span>Parar Video</span>
+        </button>
+        <button class="sim-call-control" type="button" data-sim-toggle-mic>
+          <b>🎙</b>
+          <span>Ativar som</span>
+        </button>
+        <button class="sim-call-control is-end" type="button" data-sim-end-call>
+          <b>☎</b>
+          <span>Encerrar</span>
+        </button>
       </div>
       <div class="sim-call-progress" aria-hidden="true">
         <span data-sim-progress></span>
@@ -762,22 +1041,89 @@ async function mountSimulatedPreviewCall(container, record) {
   const progress = container.querySelector('[data-sim-progress]');
   const time = container.querySelector('[data-sim-call-time]');
   const endButton = container.querySelector('[data-sim-end-call]');
+  const flipButton = container.querySelector('[data-sim-flip-camera]');
+  const cameraButton = container.querySelector('[data-sim-toggle-camera]');
+  const micButton = container.querySelector('[data-sim-toggle-mic]');
   const cameraStream = await requestPreviewCameraStream();
 
   if (cameraStream && localVideo) {
     localVideo.srcObject = cameraStream;
     localVideo.play?.().catch(() => {});
+    registerPreviewCameraState(
+      'ligada',
+      'Camera do visitante entrou ligada na chamada previa.'
+    );
   } else if (blocked) {
     blocked.hidden = false;
+    registerPreviewCameraState(
+      'desligada_ou_bloqueada',
+      'Camera do visitante entrou desligada ou nao foi permitida.'
+    );
+  }
+
+  function startSimulatedCountdown(nextDuration) {
+    if (countdownStarted) {
+      return;
+    }
+
+    countdownStarted = true;
+    if (previewSimulatedMetadataTimer) {
+      window.clearTimeout(previewSimulatedMetadataTimer);
+      previewSimulatedMetadataTimer = null;
+    }
+    const duration = Math.max(5, Math.ceil(nextDuration || PREVIEW_SIMULATED_CALL_DEFAULT_SECONDS));
+    const startedAt = Date.now();
+
+    if (time) {
+      time.textContent = `00:${String(duration).padStart(2, '0')}`;
+    }
+
+    previewSimulatedProgressTimer = window.setInterval(() => {
+      const elapsed = Math.min(duration, Math.floor((Date.now() - startedAt) / 1000));
+      const remaining = Math.max(0, duration - elapsed);
+
+      if (progress) {
+        progress.style.width = `${Math.min(100, (elapsed / duration) * 100)}%`;
+      }
+
+      if (time) {
+        const minutes = String(Math.floor(remaining / 60)).padStart(2, '0');
+        const seconds = String(remaining % 60).padStart(2, '0');
+        time.textContent = `${minutes}:${seconds}`;
+      }
+    }, 250);
+
+    previewSimulatedFinishTimer = window.setTimeout(() => {
+      finishSimulatedPreviewCall('tempo_esgotado');
+    }, duration * 1000);
   }
 
   if (videoUrl && amandaVideo) {
+    amandaVideo.loop = Boolean(configuredDuration);
     amandaVideo.src = videoUrl;
+    amandaVideo.addEventListener('loadedmetadata', () => {
+      if (!configuredDuration && Number.isFinite(amandaVideo.duration) && amandaVideo.duration > 0) {
+        startSimulatedCountdown(amandaVideo.duration);
+      }
+    });
+    amandaVideo.addEventListener('ended', () => {
+      if (!configuredDuration) {
+        finishSimulatedPreviewCall('video_finalizado');
+      }
+    });
     amandaVideo.play?.().catch(() => {
       renderSimulatedPreviewFallback(main);
     });
+    if (configuredDuration) {
+      startSimulatedCountdown(configuredDuration);
+    } else {
+      previewSimulatedMetadataTimer = window.setTimeout(() => {
+        startSimulatedCountdown(PREVIEW_SIMULATED_CALL_DEFAULT_SECONDS);
+      }, 3500);
+    }
   } else if (main) {
     renderSimulatedPreviewFallback(main);
+    startSimulatedCountdown(configuredDuration || PREVIEW_SIMULATED_CALL_DEFAULT_SECONDS);
   }
 
   if (endButton) {
@@ -786,24 +1132,10 @@ async function mountSimulatedPreviewCall(container, record) {
     });
   }
 
-  const startedAt = Date.now();
-
-  previewSimulatedProgressTimer = window.setInterval(() => {
-    const elapsed = Math.min(duration, Math.floor((Date.now() - startedAt) / 1000));
-    const remaining = Math.max(0, duration - elapsed);
-
-    if (progress) {
-      progress.style.width = `${Math.min(100, (elapsed / duration) * 100)}%`;
-    }
-
-    if (time) {
-      time.textContent = `00:${String(remaining).padStart(2, '0')}`;
-    }
-  }, 250);
-
-  previewSimulatedFinishTimer = window.setTimeout(() => {
-    finishSimulatedPreviewCall('tempo_esgotado');
-  }, duration * 1000);
+  flipButton?.addEventListener('click', flipPreviewCamera);
+  cameraButton?.addEventListener('click', togglePreviewCamera);
+  micButton?.addEventListener('click', togglePreviewMic);
+  updateSimulatedCallControls(container);
 }
 
 function disposePreviewJitsi() {
@@ -906,6 +1238,8 @@ function notifyPreviewIncomingCall(record) {
   } catch (error) {
     // Vibracao e apenas um reforco visual no celular.
   }
+
+  startPreviewRingFeedback({ sound: true });
 }
 
 function getPreviewVisitorName() {
@@ -1283,6 +1617,53 @@ function showPreviewCallMissed() {
   }, 2600);
 }
 
+async function declinePreviewCall() {
+  const isSimulatedCall = Boolean(getPreviewCallDetails(previewCallRecord).simulated_call);
+
+  stopPreviewRinging();
+
+  if (!previewCallRecord?.id) {
+    closePreviewCallRoom();
+    return;
+  }
+
+  if (isSimulatedCall) {
+    await finishSimulatedPreviewCall('usuario_recusou');
+    closePreviewCallRoom();
+    return;
+  }
+
+  const now = new Date().toISOString();
+
+  await _supa
+    .from(PREVIEW_CALL_TABLE)
+    .update({
+      status: 'cancelado',
+      updated_at: now,
+      detalhes: {
+        ...getPreviewCallDetails(previewCallRecord),
+        declined_at: now
+      }
+    })
+    .eq('id', previewCallRecord.id);
+
+  await _supa
+    .from(PREVIEW_CALL_MESSAGES_TABLE)
+    .insert({
+      chamada_id: previewCallRecord.id,
+      autor_tipo: 'sistema',
+      autor_nome: 'Sistema',
+      texto: 'Usuario recusou a chamada.'
+    });
+
+  trackEvent('recusou_chamada_previa', {
+    alvo_tipo: 'chamada_previa',
+    alvo_titulo: 'Recusou chamada'
+  });
+
+  closePreviewCallRoom();
+}
+
 function startPreviewRingingTimeout() {
   setPreviewRingingVisible(true);
 
@@ -1363,6 +1744,7 @@ async function requestPreviewVideoCall() {
     'Chamando Amanda...',
     'Aguarde alguns segundos. Amanda esta recebendo sua chamada previa.'
   );
+  setPreviewRingingActions({ answer: false, decline: true });
   setPreviewRingingVisible(true);
   const now = new Date().toISOString();
 
@@ -1479,6 +1861,7 @@ function applyPreviewCallStatus(record) {
         'Amanda esta ligando para voce...',
         'Toque em Atender chamada para entrar direto na videochamada.'
       );
+      setPreviewRingingActions({ answer: true, decline: true });
       setPreviewRingingVisible(true);
       notifyPreviewIncomingCall(record);
       setPreviewChatStatus('Amanda esta te chamando agora');
@@ -1509,6 +1892,7 @@ function applyPreviewCallStatus(record) {
         ? 'Aguarde alguns segundos. Amanda esta recebendo sua chamada previa.'
         : 'Aguarde ela atender sua chamada de video.'
     );
+    setPreviewRingingActions({ answer: false, decline: true });
     setPreviewChatStatus('Chamando Amanda...');
     setPreviewCallEnterEnabled(false, 'Chamando Amanda...');
     setPreviewRingingVisible(true);
@@ -1843,6 +2227,8 @@ function closeFullCallModal() {
 function setupCallHandlers() {
   const previewEnter = document.getElementById('preview-call-enter');
   const previewRequest = document.getElementById('preview-call-request');
+  const previewRingAnswer = document.getElementById('preview-call-ring-answer');
+  const previewRingDecline = document.getElementById('preview-call-ring-decline');
   const previewChatForm = document.getElementById('preview-chat-form');
   const previewChatInput = document.getElementById('preview-chat-input');
   const fullSelect = document.getElementById('full-call-select');
@@ -1861,6 +2247,18 @@ function setupCallHandlers() {
       if (!previewRequest.disabled) {
         requestPreviewVideoCall();
       }
+    });
+  }
+
+  if (previewRingAnswer) {
+    previewRingAnswer.addEventListener('click', () => {
+      enterPreviewCall();
+    });
+  }
+
+  if (previewRingDecline) {
+    previewRingDecline.addEventListener('click', () => {
+      declinePreviewCall();
     });
   }
 

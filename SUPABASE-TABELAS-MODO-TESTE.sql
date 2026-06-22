@@ -12,7 +12,7 @@ create table if not exists public.vip_config (
   mensagem_foto text not null default 'Para ver todas as fotos sem censura, assine o VIP com {contato}.',
   preview_segundos integer not null default 5,
   chamada_previa_video_url text,
-  chamada_previa_duracao integer not null default 18,
+  chamada_previa_duracao integer,
   updated_at timestamptz not null default now()
 );
 
@@ -64,7 +64,13 @@ alter table public.vip_config
 add column if not exists chamada_previa_video_url text;
 
 alter table public.vip_config
-add column if not exists chamada_previa_duracao integer not null default 18;
+add column if not exists chamada_previa_duracao integer;
+
+alter table public.vip_config
+alter column chamada_previa_duracao drop not null;
+
+alter table public.vip_config
+alter column chamada_previa_duracao drop default;
 
 alter table public.usuarios
 add column if not exists ativo boolean not null default true;
@@ -206,7 +212,7 @@ select
   'Para ver todas as fotos sem censura, assine o VIP com {contato}.',
   5,
   '',
-  18
+  null
 where not exists (
   select 1 from public.vip_config
 );
@@ -214,7 +220,10 @@ where not exists (
 update public.vip_config
 set
   preview_segundos = 5,
-  chamada_previa_duracao = 18
+  chamada_previa_duracao = case
+    when chamada_previa_duracao is not null and chamada_previa_duracao < 5 then null
+    else chamada_previa_duracao
+  end
 where ativo = true
   and (
     preview_segundos > 5

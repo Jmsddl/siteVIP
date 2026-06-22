@@ -9,7 +9,7 @@
 
   <link rel="manifest" href="manifest.webmanifest"/>
   <link rel="apple-touch-icon" href="icon-192.png"/>
-<link rel="stylesheet" href="style.css?v=20260621-sim-call-v7"/>
+<link rel="stylesheet" href="style.css?v=20260622-sim-call-v9"/>
 
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
@@ -295,6 +295,23 @@ Aqui eu sou completamente sua:
         </div>
         <strong>Chamando Amanda...</strong>
         <p>Aguarde alguns segundos. A previa vai abrir sem audio.</p>
+        <div class="telegram-call-ringing-actions">
+          <button
+            class="ring-answer-button"
+            id="preview-call-ring-answer"
+            type="button"
+            hidden
+          >
+            Atender chamada
+          </button>
+          <button
+            class="ring-decline-button"
+            id="preview-call-ring-decline"
+            type="button"
+          >
+            Recusar
+          </button>
+        </div>
       </div>
 
       <div class="telegram-video-stage" id="preview-video-stage" hidden>
@@ -443,9 +460,9 @@ Aqui eu sou completamente sua:
 
   <script src="auth.js?v=20260617-analytics"></script>
 
-  <script src="app.js?v=20260621-sim-call-v7"></script>
+  <script src="app.js?v=20260622-sim-call-v9"></script>
 
-  <script src="pwa.js?v=20260621-sim-call-v7"></script>
+  <script src="pwa.js?v=20260622-sim-call-v9"></script>
 
 </body>
 </html>
