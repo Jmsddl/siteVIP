@@ -1,8 +1,10 @@
 const ROOM_ADMIN_PLAN = 'admin';
 const ROOM_TABLE = 'chamadas_previas';
 const ROOM_MESSAGES_TABLE = 'chamada_mensagens';
-const ROOM_VIDEO_DOMAIN = 'meet.jit.si';
-const ROOM_VIDEO_BASE_URL = `https://${ROOM_VIDEO_DOMAIN}`;
+const JAAS_APP_ID = 'vpaas-magic-cookie-40aa8f8eaa4b44919530d6a192485f88';
+const JAAS_TOKEN_ENDPOINT = '/api/jaas-token';
+const ROOM_VIDEO_DOMAIN = '8x8.vc';
+const ROOM_VIDEO_BASE_URL = `https://${ROOM_VIDEO_DOMAIN}/${JAAS_APP_ID}`;
 const ROOM_REFRESH_MS = 2500;
 const ROOM_ACTIVE_STATUSES = ['aguardando', 'chamando', 'liberado', 'em_chamada', 'finalizado'];
 const ROOM_FINISHED_MESSAGE = 'Voce ja participou, agora pague a chamada completa.';
@@ -78,7 +80,28 @@ function getRoomVideoUrl(rowOrId) {
   const id = typeof rowOrId === 'object' ? rowOrId?.id : rowOrId;
 
   if (existingUrl && /^https?:\/\//i.test(String(existingUrl))) {
-    return existingUrl;
+    try {
+      const parsed = new URL(existingUrl);
+      const room = parsed.pathname.split('/').filter(Boolean).pop();
+
+      if (parsed.hostname === 'meet.jit.si' && room) {
+        return `${ROOM_VIDEO_BASE_URL}/${room}`;
+      }
+
+      if (parsed.hostname === ROOM_VIDEO_DOMAIN) {
+        const parts = parsed.pathname.split('/').filter(Boolean);
+
+        if (parts[0] === JAAS_APP_ID && parts[1]) {
+          return parsed.toString();
+        }
+
+        if (parts[0]) {
+          return `${ROOM_VIDEO_BASE_URL}/${parts[0]}`;
+        }
+      }
+    } catch (error) {
+      // Usa fallback abaixo quando a URL antiga estiver incompleta.
+    }
   }
 
   return `${ROOM_VIDEO_BASE_URL}/AmandaVip-${String(id || Date.now()).replace(/[^a-zA-Z0-9]/g, '')}`;
@@ -97,7 +120,13 @@ function getRoomVideoRoomName(rowOrId) {
 
   try {
     const parsed = new URL(url);
-    const room = parsed.pathname.split('/').filter(Boolean).pop();
+    const parts = parsed.pathname.split('/').filter(Boolean);
+
+    if (parsed.hostname === ROOM_VIDEO_DOMAIN && parts[0] === JAAS_APP_ID && parts[1]) {
+      return `${parts[0]}/${parts[1]}`;
+    }
+
+    const room = parts.pop();
 
     if (room) {
       return room;
@@ -110,10 +139,40 @@ function getRoomVideoRoomName(rowOrId) {
   return `AmandaVip-${String(id || Date.now()).replace(/[^a-zA-Z0-9]/g, '')}`;
 }
 
-function buildRoomVideoEmbedUrl(rowOrId, displayName = 'Amanda') {
-  const encodedName = encodeURIComponent(displayName);
+async function getRoomJaasToken(rowOrId, displayName = 'Amanda', moderator = true) {
+  if (getRoomVideoDomain(rowOrId) !== ROOM_VIDEO_DOMAIN) {
+    return getRoomDetails(typeof rowOrId === 'object' ? rowOrId : null).jaas_jwt || '';
+  }
 
-  return `${getRoomVideoUrl(rowOrId)}#userInfo.displayName="${encodedName}"&config.prejoinPageEnabled=false&config.prejoinConfig.enabled=false&config.disableDeepLinking=true&config.startWithAudioMuted=false&config.startWithVideoMuted=false`;
+  const response = await fetch(JAAS_TOKEN_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({
+      roomName: getRoomVideoRoomName(rowOrId),
+      displayName,
+      moderator
+    })
+  });
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok || !data.jwt) {
+    throw new Error(data.error || 'Nao consegui gerar o token da chamada.');
+  }
+
+  return data.jwt;
+}
+
+function buildRoomVideoEmbedUrl(rowOrId, displayName = 'Amanda', jwt = '') {
+  const encodedName = encodeURIComponent(displayName);
+  const url = new URL(getRoomVideoUrl(rowOrId));
+
+  if (jwt) {
+    url.searchParams.set('jwt', jwt);
+  }
+
+  return `${url.toString()}#userInfo.displayName="${encodedName}"&config.prejoinPageEnabled=false&config.prejoinConfig.enabled=false&config.disableDeepLinking=true&config.startWithAudioMuted=false&config.startWithVideoMuted=false`;
 }
 
 function getRoomJitsiConfig() {
@@ -170,9 +229,10 @@ function disposeRoomJitsi(id) {
   }
 }
 
-function mountRoomJitsiMeeting(id, rowOrId, displayName = 'Amanda') {
+async function mountRoomJitsiMeeting(id, rowOrId, displayName = 'Amanda') {
   const stage = document.getElementById(`room-video-${id}`);
   const frame = stage?.querySelector('[data-room-video-frame]');
+  const jwt = await getRoomJaasToken(rowOrId, displayName, true);
 
   if (!stage || !frame) {
     return;
@@ -188,6 +248,7 @@ function mountRoomJitsiMeeting(id, rowOrId, displayName = 'Amanda') {
       width: '100%',
       height: '100%',
       userInfo: { displayName },
+      ...(jwt ? { jwt } : {}),
       configOverwrite: getRoomJitsiConfig(),
       interfaceConfigOverwrite: getRoomJitsiInterfaceConfig()
     });
@@ -198,7 +259,7 @@ function mountRoomJitsiMeeting(id, rowOrId, displayName = 'Amanda') {
     iframe.title = 'Chamada de video';
     iframe.allow = 'camera; microphone; fullscreen; display-capture; autoplay';
     iframe.allowFullscreen = true;
-    iframe.src = buildRoomVideoEmbedUrl(rowOrId, displayName);
+    iframe.src = buildRoomVideoEmbedUrl(rowOrId, displayName, jwt);
     frame.appendChild(iframe);
   }
 
@@ -858,14 +919,19 @@ async function sendRoomMessage(event, chamadaId) {
   loadRoomMessagesForRows();
 }
 
-function openAdminVideoCall(id) {
+async function openAdminVideoCall(id) {
   const row = roomRows.find((item) => item.id === id);
 
   if (!row) {
     return;
   }
 
-  mountRoomJitsiMeeting(id, row, 'Amanda');
+  try {
+    await mountRoomJitsiMeeting(id, row, 'Amanda');
+  } catch (error) {
+    console.warn('Nao consegui abrir chamada JaaS:', error.message || error);
+    setRoomStatus(error.message || 'Nao consegui abrir a chamada segura.', true);
+  }
 }
 
 async function acceptIncomingCall(id) {
@@ -902,7 +968,12 @@ async function acceptIncomingCall(id) {
     'Amanda atendeu a chamada de video.'
   );
   hideIncomingCallPopup();
-  mountRoomJitsiMeeting(id, updatedRow, 'Amanda');
+  try {
+    await mountRoomJitsiMeeting(id, updatedRow, 'Amanda');
+  } catch (error) {
+    console.warn('Nao consegui abrir chamada JaaS:', error.message || error);
+    setRoomStatus(error.message || 'Nao consegui abrir a chamada segura.', true);
+  }
   loadRoomMessagesForRows();
 }
 
@@ -964,7 +1035,12 @@ async function startAdminVideoCall(id) {
     'Amanda esta ligando para voce. Toque em Atender chamada.'
   );
   hideIncomingCallPopup();
-  mountRoomJitsiMeeting(id, updatedRow, 'Amanda');
+  try {
+    await mountRoomJitsiMeeting(id, updatedRow, 'Amanda');
+  } catch (error) {
+    console.warn('Nao consegui abrir chamada JaaS:', error.message || error);
+    setRoomStatus(error.message || 'Nao consegui abrir a chamada segura.', true);
+  }
   loadRoomMessagesForRows();
 }
 

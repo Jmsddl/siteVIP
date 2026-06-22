@@ -1,0 +1,49 @@
+CONFIGURAR JaaS COM JWT NO CLOUDFLARE
+
+O projeto ja esta pronto para usar JaaS com JWT.
+
+1) No painel JaaS
+
+- Entre em Chaves de API.
+- Na lista, copie o API Key ID / kid.
+- Ele costuma parecer com:
+  vpaas-magic-cookie-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/abc123
+
+O AppID deste projeto ja esta configurado como:
+vpaas-magic-cookie-40aa8f8eaa4b44919530d6a192485f88
+
+2) No Cloudflare
+
+Va no projeto Worker/Pages > Settings > Variables and Secrets.
+
+Crie estes Secrets:
+
+JAAS_KID
+Cole o API Key ID / kid completo.
+
+JAAS_PRIVATE_KEY
+Cole TODO o conteudo do arquivo privado .pk, incluindo:
+-----BEGIN PRIVATE KEY-----
+...
+-----END PRIVATE KEY-----
+
+Opcional:
+
+JAAS_APP_ID
+vpaas-magic-cookie-40aa8f8eaa4b44919530d6a192485f88
+
+3) Importante
+
+- Nunca suba o arquivo .pk para o GitHub.
+- Nunca cole a chave privada em app.js, HTML, Supabase ou banco.
+- A chave privada fica somente como Secret no Cloudflare.
+
+4) Teste
+
+Depois do deploy, abra:
+/api/jaas-token
+
+Se abrir pelo navegador com GET, deve responder metodo nao permitido.
+Isso e normal.
+
+O teste real acontece quando abrir uma chamada no site.

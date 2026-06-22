@@ -1348,6 +1348,164 @@ body.modal-open {
   background: #000;
 }
 
+.sim-call-screen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  color: #fff;
+  background: #050505;
+}
+
+.sim-call-main,
+.sim-call-amanda-video,
+.sim-call-fallback {
+  width: 100%;
+  height: 100%;
+}
+
+.sim-call-amanda-video {
+  display: block;
+  object-fit: cover;
+  background: #090909;
+}
+
+.sim-call-fallback {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  padding: 22px;
+  text-align: center;
+  background:
+    radial-gradient(circle at center, rgba(233, 30, 140, 0.28), transparent 46%),
+    linear-gradient(180deg, #141414, #050505);
+}
+
+.sim-call-fallback img {
+  width: 112px;
+  height: 112px;
+  border-radius: 999px;
+  object-fit: cover;
+  border: 3px solid var(--accent2);
+  box-shadow: 0 0 0 8px rgba(233, 30, 140, 0.14);
+}
+
+.sim-call-fallback strong {
+  font-size: 1.12rem;
+}
+
+.sim-call-fallback span {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.85rem;
+}
+
+.sim-call-local {
+  position: absolute;
+  right: 12px;
+  top: 52px;
+  width: min(31%, 118px);
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.72);
+  background: rgba(0, 0, 0, 0.72);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.38);
+}
+
+.sim-call-local video,
+.sim-call-camera-blocked {
+  width: 100%;
+  height: 100%;
+}
+
+.sim-call-local video {
+  display: block;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+.sim-call-camera-blocked {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  color: rgba(255, 255, 255, 0.86);
+  text-align: center;
+  font-size: 0.72rem;
+  background: rgba(13, 13, 13, 0.92);
+}
+
+.sim-call-camera-blocked[hidden] {
+  display: none !important;
+}
+
+.sim-call-top,
+.sim-call-bottom {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sim-call-top {
+  top: 12px;
+  justify-content: flex-start;
+  width: fit-content;
+  max-width: calc(100% - 24px);
+  border-radius: 999px;
+  padding: 8px 11px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+  font-size: 0.82rem;
+}
+
+.sim-call-bottom {
+  bottom: 14px;
+  border-radius: 18px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(12px);
+}
+
+.sim-call-bottom span {
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.sim-call-end {
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 14px;
+  color: #fff;
+  background: linear-gradient(135deg, #e53935, #b71c1c);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.sim-call-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  z-index: 3;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.sim-call-progress span {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  transition: width 0.2s linear;
+}
+
 .telegram-chat-messages {
   flex: 1 1 auto;
   overflow-y: auto;
@@ -2568,6 +2726,19 @@ body.modal-open {
   .telegram-video-stage {
     aspect-ratio: 9 / 14;
     max-height: 58dvh;
+  }
+
+  .sim-call-local {
+    right: 10px;
+    top: 48px;
+    width: min(34%, 108px);
+    border-radius: 14px;
+  }
+
+  .sim-call-bottom {
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
   }
 
   .telegram-chat-form,

@@ -11,6 +11,8 @@ create table if not exists public.vip_config (
   mensagem_video text not null default 'Entre em contato com {contato} para assinar o VIP e continuar assistindo.',
   mensagem_foto text not null default 'Para ver todas as fotos sem censura, assine o VIP com {contato}.',
   preview_segundos integer not null default 5,
+  chamada_previa_video_url text,
+  chamada_previa_duracao integer not null default 18,
   updated_at timestamptz not null default now()
 );
 
@@ -57,6 +59,12 @@ add column if not exists whatsapp_url text;
 
 alter table public.vip_config
 add column if not exists botao_contato_texto text not null default 'Chamar no WhatsApp';
+
+alter table public.vip_config
+add column if not exists chamada_previa_video_url text;
+
+alter table public.vip_config
+add column if not exists chamada_previa_duracao integer not null default 18;
 
 alter table public.usuarios
 add column if not exists ativo boolean not null default true;
@@ -184,7 +192,9 @@ insert into public.vip_config (
   botao_contato_texto,
   mensagem_video,
   mensagem_foto,
-  preview_segundos
+  preview_segundos,
+  chamada_previa_video_url,
+  chamada_previa_duracao
 )
 select
   true,
@@ -194,15 +204,23 @@ select
   'Chamar no WhatsApp',
   'Entre em contato com {contato} para assinar o VIP e continuar assistindo.',
   'Para ver todas as fotos sem censura, assine o VIP com {contato}.',
-  5
+  5,
+  '',
+  18
 where not exists (
   select 1 from public.vip_config
 );
 
 update public.vip_config
-set preview_segundos = 5
+set
+  preview_segundos = 5,
+  chamada_previa_duracao = 18
 where ativo = true
-  and preview_segundos > 5;
+  and (
+    preview_segundos > 5
+    or chamada_previa_duracao is null
+    or chamada_previa_duracao < 5
+  );
 
 update public.vip_config
 set botao_contato_texto = 'Chamar no WhatsApp'
