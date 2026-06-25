@@ -10,5 +10,9 @@ SUPABASE-ANALYTICS.sql
 SUPABASE-GERAL-PROJETO.sql
 COMO-USAR-CLOUDFLARE-R2.txt
 wrangler.toml
+*.pk
+*.pem
+Key *.pk
+Key *.pem
 .git/
 .github/
