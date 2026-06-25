@@ -9,6 +9,7 @@ create table if not exists public.chamadas_previas (
   plano text,
   sessao_id text,
   ip text not null default 'sem-ip',
+  telefone text,
   status text not null default 'aguardando',
   meet_url text,
   entrou_em timestamptz,
@@ -24,6 +25,7 @@ alter table public.chamadas_previas
   add column if not exists plano text,
   add column if not exists sessao_id text,
   add column if not exists ip text not null default 'sem-ip',
+  add column if not exists telefone text,
   add column if not exists status text not null default 'aguardando',
   add column if not exists meet_url text,
   add column if not exists entrou_em timestamptz,
@@ -45,10 +47,13 @@ alter table public.chamadas_previas
 
 drop index if exists public.chamadas_previas_ip_ativa_idx;
 drop index if exists public.chamadas_previas_ip_finalizado_idx;
+drop index if exists public.chamadas_previas_telefone_finalizado_idx;
 
-create unique index if not exists chamadas_previas_ip_finalizado_idx
-  on public.chamadas_previas (ip)
+create unique index if not exists chamadas_previas_telefone_finalizado_idx
+  on public.chamadas_previas (telefone)
   where status = 'finalizado'
+    and telefone is not null
+    and telefone <> ''
     and ip <> '177.10.146.100';
 
 create index if not exists chamadas_previas_status_created_idx
@@ -59,6 +64,9 @@ create index if not exists chamadas_previas_ip_status_idx
 
 create index if not exists chamadas_previas_ip_updated_idx
   on public.chamadas_previas (ip, updated_at desc);
+
+create index if not exists chamadas_previas_telefone_updated_idx
+  on public.chamadas_previas (telefone, updated_at desc);
 
 create table if not exists public.chamada_mensagens (
   id uuid primary key default gen_random_uuid(),

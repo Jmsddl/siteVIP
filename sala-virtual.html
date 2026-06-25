@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
@@ -7,7 +7,7 @@
   <title>Sala virtual</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="style.css?v=20260622-sim-call-v9" />
+  <link rel="stylesheet" href="style.css?v=20260625-sim-call-v17" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
@@ -70,7 +70,10 @@
       </button>
     </div>
 
-    <section class="virtual-room-grid" id="room-list"></section>
+    <div class="virtual-room-workspace" id="room-workspace">
+      <section class="virtual-room-grid" id="room-list"></section>
+      <aside class="room-side-panel" id="room-side-panel" hidden></aside>
+    </div>
 
     <section class="analytics-denied" id="room-denied" hidden>
       <h2>Acesso restrito</h2>
@@ -112,7 +115,10 @@
   <script src="supabase-config.js?v=20260617-analytics"></script>
   <script src="auth.js?v=20260617-analytics"></script>
   <script src="https://8x8.vc/vpaas-magic-cookie-40aa8f8eaa4b44919530d6a192485f88/external_api.js"></script>
-  <script src="sala-virtual.js?v=20260622-sim-call-v9"></script>
-  <script src="pwa.js?v=20260622-sim-call-v9"></script>
+  <script src="sala-virtual.js?v=20260625-sim-call-v17"></script>
+  <script src="pwa.js?v=20260625-sim-call-v17"></script>
 </body>
 </html>
+
+
+
