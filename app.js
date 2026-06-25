@@ -57,7 +57,7 @@ const DEFAULT_VIP_OFFERS = [
   },
   {
     titulo: 'MANDA UM MIMO',
-    descricao: 'Em troca de um vídeo meu',
+    descricao: 'Em troca de um video meu',
     valor: 'R$ 10,00',
     destaque: false
   }
@@ -93,19 +93,13 @@ const PREVIEW_CALL_VIDEO_BASE_URL = `https://${PREVIEW_CALL_VIDEO_DOMAIN}/${JAAS
 const PREVIEW_CALL_POLL_MS = 2000;
 const PREVIEW_CHAT_POLL_MS = 3000;
 const PREVIEW_CALL_RING_TIMEOUT_MS = 45000;
-const PREVIEW_SIMULATED_RING_MS = 5600;
+const PREVIEW_SIMULATED_RING_MS = 3600;
 const PREVIEW_SIMULATED_CALL_DEFAULT_SECONDS = 18;
-const PREVIEW_SIMULATED_CONTROLS_HIDE_MS = 5200;
 const PREVIEW_CALL_ACTIVE_STATUSES = ['aguardando', 'chamando', 'liberado', 'em_chamada'];
 const PREVIEW_CHAT_VISIBLE_STATUSES = ['aguardando', 'chamando', 'liberado', 'em_chamada', 'finalizado'];
 const PREVIEW_CALL_TEST_IPS = ['177.10.146.100'];
 const PREVIEW_VISITOR_STORAGE_KEY = 'amanda_preview_visitor_name';
-const PREVIEW_PHONE_STORAGE_KEY = 'amanda_preview_phone';
-const PREVIEW_PHONE_IP_STORAGE_KEY = 'amanda_preview_phone_ip';
-const PREVIEW_FORCE_FINISH_STORAGE_KEY = 'amanda_preview_force_finish_call';
 const PREVIEW_FINISHED_MESSAGE = 'Voce ja participou, agora pague a chamada completa.';
-const PREVIEW_CONNECT_DELAY_MS = 6000;
-const PREVIEW_VISITOR_SYSTEM_TTL_MS = 10000;
 const PRESENCE_TABLE = 'sala_status';
 const PRESENCE_KEY = 'amanda';
 const PRESENCE_POLL_MS = 15000;
@@ -137,8 +131,6 @@ let previewIncomingPollTimer = null;
 let previewSimulatedFinishTimer = null;
 let previewSimulatedProgressTimer = null;
 let previewSimulatedMetadataTimer = null;
-let previewSimulatedControlsTimer = null;
-let previewChatTemporaryRenderTimer = null;
 let previewVibrationTimer = null;
 let previewRingAudioTimer = null;
 let previewRingAudioContext = null;
@@ -152,7 +144,6 @@ let previewIncomingCallKey = '';
 let previewCallStartedAt = null;
 let presencePollTimer = null;
 let previewChatLastRenderKey = '';
-let previewCallClosingForBackground = false;
 let amandaPresenceOnline = false;
 
 function escapeHtml(value) {
@@ -535,143 +526,8 @@ function setPreviewCardMode(mode = '') {
     return;
   }
 
-  card.classList.toggle('is-phone-gate', mode === 'phone');
   card.classList.toggle('is-ringing', mode === 'ringing');
   card.classList.toggle('is-in-call', mode === 'call');
-}
-
-function setPreviewPhoneGateVisible(show) {
-  const gate = document.getElementById('preview-phone-gate');
-
-  if (gate) {
-    gate.hidden = !show;
-  }
-
-  setPreviewCardMode(show ? 'phone' : '');
-}
-
-function normalizePreviewPhone(value) {
-  return String(value || '').replace(/\D/g, '').slice(0, 14);
-}
-
-function formatPreviewPhone(value) {
-  const phone = normalizePreviewPhone(value);
-
-  if (phone.length <= 2) {
-    return phone;
-  }
-
-  if (phone.length <= 7) {
-    return `(${phone.slice(0, 2)}) ${phone.slice(2)}`;
-  }
-
-  if (phone.length <= 11) {
-    return `(${phone.slice(0, 2)}) ${phone.slice(2, phone.length - 4)}-${phone.slice(-4)}`;
-  }
-
-  return `+${phone.slice(0, phone.length - 11)} (${phone.slice(-11, -9)}) ${phone.slice(-9, -4)}-${phone.slice(-4)}`;
-}
-
-function getBrazilMobileDigits(value) {
-  const phone = normalizePreviewPhone(value);
-
-  return phone.length === 13 && phone.startsWith('55')
-    ? phone.slice(2)
-    : phone;
-}
-
-function isValidPreviewPhone(value) {
-  const phone = getBrazilMobileDigits(value);
-
-  if (phone.length !== 11 || /^(\d)\1+$/.test(phone)) {
-    return false;
-  }
-
-  const ddd = Number(phone.slice(0, 2));
-  const startsLikeMobile = phone[2] === '9';
-
-  return ddd >= 11 && ddd <= 99 && startsLikeMobile;
-}
-
-function getStoredPreviewPhone() {
-  try {
-    return normalizePreviewPhone(localStorage.getItem(PREVIEW_PHONE_STORAGE_KEY));
-  } catch (error) {
-    return '';
-  }
-}
-
-function getStoredPreviewPhoneIp() {
-  try {
-    return localStorage.getItem(PREVIEW_PHONE_IP_STORAGE_KEY) || '';
-  } catch (error) {
-    return '';
-  }
-}
-
-function storePreviewPhone(phone, ip) {
-  try {
-    localStorage.setItem(PREVIEW_PHONE_STORAGE_KEY, phone);
-    localStorage.setItem(PREVIEW_PHONE_IP_STORAGE_KEY, ip || '');
-  } catch (error) {
-    // Sem localStorage, o telefone ainda funciona nesta sessao pelo Supabase.
-  }
-}
-
-function askPreviewPhone(ip) {
-  const gate = document.getElementById('preview-phone-gate');
-  const form = document.getElementById('preview-phone-form');
-  const input = document.getElementById('preview-phone-input');
-  const errorEl = document.getElementById('preview-phone-error');
-  const cachedPhone = getStoredPreviewPhone();
-
-  if (!gate || !form || !input) {
-    return Promise.resolve(cachedPhone);
-  }
-
-  input.value = cachedPhone ? formatPreviewPhone(cachedPhone) : '';
-  if (errorEl) {
-    errorEl.hidden = true;
-  }
-
-  setPreviewPhoneGateVisible(true);
-  window.setTimeout(() => input.focus(), 80);
-  input.oninput = () => {
-    input.value = formatPreviewPhone(input.value);
-
-    if (errorEl) {
-      errorEl.hidden = true;
-    }
-  };
-
-  return new Promise((resolve) => {
-    form.onsubmit = (event) => {
-      event.preventDefault();
-      const phone = normalizePreviewPhone(input.value);
-
-      if (!isValidPreviewPhone(phone)) {
-        if (errorEl) {
-          errorEl.hidden = false;
-        }
-        return;
-      }
-
-      storePreviewPhone(phone, ip);
-      setPreviewPhoneGateVisible(false);
-      resolve(phone);
-    };
-  });
-}
-
-async function ensurePreviewPhone(ip) {
-  const cachedPhone = getStoredPreviewPhone();
-  const cachedIp = getStoredPreviewPhoneIp();
-
-  if (cachedPhone && cachedIp === ip) {
-    return cachedPhone;
-  }
-
-  return askPreviewPhone(ip);
 }
 
 function setPreviewRingingActions({ answer = false, decline = true } = {}) {
@@ -795,11 +651,6 @@ function stopPreviewRinging() {
     window.clearTimeout(previewCallRingTimer);
     previewCallRingTimer = null;
   }
-
-  if (previewChatTemporaryRenderTimer) {
-    window.clearTimeout(previewChatTemporaryRenderTimer);
-    previewChatTemporaryRenderTimer = null;
-  }
 }
 
 function updateSimulatedCallControls(container = document) {
@@ -809,30 +660,18 @@ function updateSimulatedCallControls(container = document) {
 
   if (micButton) {
     micButton.classList.toggle('is-muted', !previewMicEnabled);
-    const micLabel = micButton.querySelector('[data-sim-control-label]');
-    if (micLabel) {
-      micLabel.textContent = previewMicEnabled ? 'Silenciar' : 'Ativar mic';
-    }
+    micButton.querySelector('span').textContent = previewMicEnabled ? 'Silenciar' : 'Ativar som';
   }
 
   if (cameraButton) {
     cameraButton.classList.toggle('is-muted', !previewCameraEnabled);
-    const cameraLabel = cameraButton.querySelector('[data-sim-control-label]');
-    if (cameraLabel) {
-      cameraLabel.textContent = previewCameraEnabled ? 'Desligar camera' : 'Ligar camera';
-    }
+    cameraButton.querySelector('span').textContent = previewCameraEnabled ? 'Parar Video' : 'Ativar Video';
   }
 
   if (cameraBlocked) {
     cameraBlocked.hidden = previewCameraEnabled && Boolean(previewCameraStream?.getVideoTracks().length);
     cameraBlocked.textContent = previewCameraEnabled ? 'Camera nao liberada' : 'Camera desligada';
   }
-}
-
-function waitPreviewDelay(ms) {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
 }
 
 async function registerPreviewCameraState(status, message) {
@@ -939,59 +778,6 @@ function clearPreviewSimulatedTimers() {
     window.clearTimeout(previewSimulatedMetadataTimer);
     previewSimulatedMetadataTimer = null;
   }
-
-  if (previewSimulatedControlsTimer) {
-    window.clearTimeout(previewSimulatedControlsTimer);
-    previewSimulatedControlsTimer = null;
-  }
-}
-
-function formatSimulatedElapsedClock(seconds) {
-  const safeSeconds = Math.max(0, Number(seconds) || 0);
-  const minutes = String(Math.floor(safeSeconds / 60)).padStart(2, '0');
-  const rest = String(safeSeconds % 60).padStart(2, '0');
-
-  return `${minutes}:${rest}`;
-}
-
-function setSimulatedCallControlsVisible(screen, visible) {
-  if (!screen) {
-    return;
-  }
-
-  screen.classList.toggle('is-controls-hidden', !visible);
-}
-
-function scheduleSimulatedCallControlsHide(screen) {
-  if (previewSimulatedControlsTimer) {
-    window.clearTimeout(previewSimulatedControlsTimer);
-  }
-
-  previewSimulatedControlsTimer = window.setTimeout(() => {
-    previewSimulatedControlsTimer = null;
-    setSimulatedCallControlsVisible(screen, false);
-  }, PREVIEW_SIMULATED_CONTROLS_HIDE_MS);
-}
-
-function showSimulatedCallControlsTemporarily(screen) {
-  if (!screen || screen.classList.contains('is-connecting')) {
-    return;
-  }
-
-  setSimulatedCallControlsVisible(screen, true);
-  scheduleSimulatedCallControlsHide(screen);
-}
-
-function bindSimulatedCallControlsAutoHide(screen) {
-  if (!screen) {
-    return;
-  }
-
-  const reveal = () => showSimulatedCallControlsTemporarily(screen);
-
-  screen.addEventListener('pointerdown', reveal, { passive: true });
-  screen.addEventListener('mousemove', reveal, { passive: true });
-  screen.addEventListener('contextmenu', (event) => event.preventDefault());
 }
 
 function stopPreviewCameraStream() {
@@ -1041,7 +827,7 @@ async function requestPreviewCameraStream(facingMode = previewCameraFacingMode, 
 
     return previewCameraStream;
   } catch (error) {
-    console.warn('Câmera local não liberada para chamada prévia:', error.message || error);
+    console.warn('Camera local nao liberada para chamada previa:', error.message || error);
     if (!options.silent) {
       trackEvent('bloqueou_camera_chamada_previa', {
         alvo_tipo: 'chamada_previa',
@@ -1075,8 +861,8 @@ function togglePreviewCamera() {
   registerPreviewCameraState(
     previewCameraEnabled ? 'ligada' : 'desligada',
     previewCameraEnabled
-      ? 'Visitante ligou a câmera durante a chamada prévia.'
-      : 'Visitante desligou a câmera durante a chamada prévia.'
+      ? 'Visitante ligou a camera durante a chamada previa.'
+      : 'Visitante desligou a camera durante a chamada previa.'
   );
   trackEvent(previewCameraEnabled ? 'ligou_camera_chamada_previa' : 'desligou_camera_chamada_previa', {
     alvo_tipo: 'chamada_previa',
@@ -1122,125 +908,29 @@ function renderSimulatedPreviewFallback(container) {
     <div class="sim-call-fallback">
       <img src="sua-foto.jpg" alt="Amanda Oliveira" />
       <strong>Amanda conectada</strong>
-      <span>Prévia sem áudio em andamento</span>
+      <span>Previa sem audio em andamento</span>
     </div>
   `;
 }
 
-function getPreviewFinishSystemMessage(reason) {
-  if (reason === 'saiu_da_aba' || reason === 'saiu_da_pagina') {
-    return 'Chamada prévia encerrada porque a tela saiu da chamada.';
-  }
-
-  if (reason === 'usuario_encerrou') {
-    return 'Chamada prévia encerrada pelo visitante.';
-  }
-
-  return 'Chamada prévia encerrada automaticamente.';
-}
-
-function isActiveSimulatedPreviewCall() {
-  return Boolean(
-    previewCallRecord?.id &&
-    previewCallRecord.status === 'em_chamada' &&
-    getPreviewCallDetails(previewCallRecord).simulated_call
-  );
-}
-
-function rememberPreviewForcedFinish(reason) {
-  if (!previewCallRecord?.id) {
+async function finishSimulatedPreviewCall(reason = 'tempo_esgotado') {
+  if (!previewCallRecord?.id || previewCallRecord.status === 'finalizado') {
     return;
-  }
-
-  try {
-    localStorage.setItem(PREVIEW_FORCE_FINISH_STORAGE_KEY, JSON.stringify({
-      id: previewCallRecord.id,
-      reason,
-      created_at: new Date().toISOString()
-    }));
-  } catch (error) {
-    // Se o navegador bloquear storage, a tentativa online ainda acontece.
-  }
-}
-
-function getPreviewForcedFinishMarker() {
-  try {
-    return JSON.parse(localStorage.getItem(PREVIEW_FORCE_FINISH_STORAGE_KEY) || 'null');
-  } catch (error) {
-    return null;
-  }
-}
-
-function clearPreviewForcedFinishMarker(callId = '') {
-  const marker = getPreviewForcedFinishMarker();
-
-  if (callId && marker?.id && marker.id !== callId) {
-    return;
-  }
-
-  try {
-    localStorage.removeItem(PREVIEW_FORCE_FINISH_STORAGE_KEY);
-  } catch (error) {
-    // Ignora storage indisponivel.
-  }
-}
-
-async function finishPreviewCallIfMarkedAsLeft(record) {
-  const marker = getPreviewForcedFinishMarker();
-
-  if (!record?.id || marker?.id !== record.id) {
-    return record;
-  }
-
-  if (record.status === 'finalizado') {
-    clearPreviewForcedFinishMarker(record.id);
-    return record;
-  }
-
-  if (record.status !== 'em_chamada') {
-    clearPreviewForcedFinishMarker(record.id);
-    return record;
-  }
-
-  const finishedRecord = await persistPreviewCallFinished(
-    record,
-    marker.reason || 'saiu_da_aba'
-  );
-  clearPreviewForcedFinishMarker(record.id);
-  return finishedRecord;
-}
-
-function finishPreviewCallOnBackgroundExit(reason = 'saiu_da_aba') {
-  if (!isActiveSimulatedPreviewCall() || previewCallClosingForBackground) {
-    return;
-  }
-
-  previewCallClosingForBackground = true;
-  rememberPreviewForcedFinish(reason);
-
-  finishSimulatedPreviewCall(reason)
-    .catch((error) => {
-      console.warn('Nao consegui encerrar chamada ao sair da tela:', error.message || error);
-    })
-    .finally(() => {
-      previewCallClosingForBackground = false;
-    });
-}
-
-async function persistPreviewCallFinished(record, reason = 'tempo_esgotado') {
-  if (!record?.id || record.status === 'finalizado') {
-    return record;
   }
 
   const now = new Date().toISOString();
   const details = {
-    ...getPreviewCallDetails(record),
+    ...getPreviewCallDetails(previewCallRecord),
     simulated_call: true,
     simulated_finished_reason: reason,
     simulated_finished_at: now
   };
-  const finishedRecord = {
-    ...record,
+
+  clearPreviewSimulatedTimers();
+  stopPreviewCameraStream();
+
+  previewCallRecord = {
+    ...previewCallRecord,
     status: 'finalizado',
     finalizado_em: now,
     detalhes: details
@@ -1254,39 +944,25 @@ async function persistPreviewCallFinished(record, reason = 'tempo_esgotado') {
       detalhes: details,
       updated_at: now
     })
-    .eq('id', record.id);
+    .eq('id', previewCallRecord.id);
 
-  await ensurePreviewFinishedMessage(finishedRecord);
+  await ensurePreviewFinishedMessage(previewCallRecord);
 
   await _supa
     .from(PREVIEW_CALL_MESSAGES_TABLE)
     .insert({
-      chamada_id: record.id,
+      chamada_id: previewCallRecord.id,
       autor_tipo: 'sistema',
       autor_nome: 'Sistema',
-      texto: getPreviewFinishSystemMessage(reason)
+      texto: 'Chamada previa encerrada automaticamente.'
     });
-
-  return finishedRecord;
-}
-
-async function finishSimulatedPreviewCall(reason = 'tempo_esgotado') {
-  if (!previewCallRecord?.id || previewCallRecord.status === 'finalizado') {
-    return;
-  }
-
-  clearPreviewSimulatedTimers();
-  stopPreviewCameraStream();
-
-  previewCallRecord = await persistPreviewCallFinished(previewCallRecord, reason);
-  clearPreviewForcedFinishMarker(previewCallRecord?.id);
 
   trackEvent('finalizou_chamada_previa_simulada', {
     alvo_tipo: 'chamada_previa',
     alvo_titulo: 'Previa simulada finalizada'
   });
 
-  setPreviewChatStatus('Chamada prévia finalizada');
+  setPreviewChatStatus('Chamada previa finalizada');
   loadPreviewChatMessages();
   applyPreviewCallStatus(previewCallRecord);
 }
@@ -1304,7 +980,7 @@ async function mountSimulatedPreviewCall(container, record) {
   previewCameraEnabled = true;
   setPreviewCardMode('call');
   container.innerHTML = `
-    <div class="sim-call-screen is-connecting" data-sim-screen>
+    <div class="sim-call-screen">
       <div class="sim-call-main" data-sim-main>
         <video
           class="sim-call-amanda-video"
@@ -1328,59 +1004,28 @@ async function mountSimulatedPreviewCall(container, record) {
           Camera nao liberada
         </div>
       </div>
-      <div class="sim-call-preconnect" data-sim-preconnect>
-        <strong>Amanda Oliveira</strong>
-        <span>Trocando chaves criptográficas <i></i></span>
-      </div>
       <div class="sim-call-top">
         <div class="sim-call-emojis" aria-hidden="true">😱 🍕 🐙 🇫🇷</div>
         <strong>Amanda Oliveira</strong>
-        <span><i></i> <b data-sim-call-time>00:00</b></span>
+        <span><i></i> <b data-sim-call-time>00:${String(initialDuration).padStart(2, '0')}</b></span>
+        <em>Sinal de rede fraco</em>
       </div>
       <div class="sim-call-bottom">
         <button class="sim-call-control" type="button" data-sim-flip-camera>
-          <b>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M7 7h7a5 5 0 1 1-4.4 7.4" />
-              <path d="M7 7V3" />
-              <path d="M7 7H3" />
-              <path d="M17 17h-7a5 5 0 0 1-4.4-7.4" />
-              <path d="M17 17v4" />
-              <path d="M17 17h4" />
-            </svg>
-          </b>
-          <span data-sim-control-label>Virar</span>
+          <b>↻</b>
+          <span>Virar</span>
         </button>
         <button class="sim-call-control" type="button" data-sim-toggle-camera>
-          <b>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 7.5A2.5 2.5 0 0 1 6.5 5h8A2.5 2.5 0 0 1 17 7.5v9A2.5 2.5 0 0 1 14.5 19h-8A2.5 2.5 0 0 1 4 16.5z" />
-              <path d="m17 10 4-2.5v9L17 14" />
-            </svg>
-          </b>
-          <span data-sim-control-label>Desligar camera</span>
+          <b>▮▶</b>
+          <span>Parar Video</span>
         </button>
         <button class="sim-call-control" type="button" data-sim-toggle-mic>
-          <span class="sim-call-mic-hint">Amanda desligou o microfone dela</span>
-          <b>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 14a4 4 0 0 0 4-4V6a4 4 0 0 0-8 0v4a4 4 0 0 0 4 4z" />
-              <path d="M18 10a6 6 0 0 1-12 0" />
-              <path d="M12 18v3" />
-              <path d="M8.5 21h7" />
-            </svg>
-          </b>
-          <span data-sim-control-label>Ativar som</span>
+          <b>🎙</b>
+          <span>Ativar som</span>
         </button>
         <button class="sim-call-control is-end" type="button" data-sim-end-call>
-          <b>
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M6.8 14.8c3.1-2.2 7.3-2.2 10.4 0" />
-              <path d="m7.2 14.5-2.1 2.1a2 2 0 0 0 0 2.8l.4.4a2 2 0 0 0 2.8 0l1.1-1.1" />
-              <path d="m16.8 14.5 2.1 2.1a2 2 0 0 1 0 2.8l-.4.4a2 2 0 0 1-2.8 0l-1.1-1.1" />
-            </svg>
-          </b>
-          <span data-sim-control-label>Encerrar</span>
+          <b>☎</b>
+          <span>Encerrar</span>
         </button>
       </div>
       <div class="sim-call-progress" aria-hidden="true">
@@ -1389,8 +1034,6 @@ async function mountSimulatedPreviewCall(container, record) {
     </div>
   `;
 
-  const screen = container.querySelector('[data-sim-screen]');
-  const preconnect = container.querySelector('[data-sim-preconnect]');
   const main = container.querySelector('[data-sim-main]');
   const amandaVideo = container.querySelector('[data-sim-amanda-video]');
   const localVideo = container.querySelector('[data-sim-local-video]');
@@ -1402,20 +1045,19 @@ async function mountSimulatedPreviewCall(container, record) {
   const cameraButton = container.querySelector('[data-sim-toggle-camera]');
   const micButton = container.querySelector('[data-sim-toggle-mic]');
   const cameraStream = await requestPreviewCameraStream();
-  bindSimulatedCallControlsAutoHide(screen);
 
   if (cameraStream && localVideo) {
     localVideo.srcObject = cameraStream;
     localVideo.play?.().catch(() => {});
     registerPreviewCameraState(
       'ligada',
-      'Câmera do visitante entrou ligada na chamada prévia.'
+      'Camera do visitante entrou ligada na chamada previa.'
     );
   } else if (blocked) {
     blocked.hidden = false;
     registerPreviewCameraState(
       'desligada_ou_bloqueada',
-      'Câmera do visitante entrou desligada ou não foi permitida.'
+      'Camera do visitante entrou desligada ou nao foi permitida.'
     );
   }
 
@@ -1433,18 +1075,21 @@ async function mountSimulatedPreviewCall(container, record) {
     const startedAt = Date.now();
 
     if (time) {
-      time.textContent = '00:00';
+      time.textContent = `00:${String(duration).padStart(2, '0')}`;
     }
 
     previewSimulatedProgressTimer = window.setInterval(() => {
       const elapsed = Math.min(duration, Math.floor((Date.now() - startedAt) / 1000));
+      const remaining = Math.max(0, duration - elapsed);
 
       if (progress) {
         progress.style.width = `${Math.min(100, (elapsed / duration) * 100)}%`;
       }
 
       if (time) {
-        time.textContent = formatSimulatedElapsedClock(elapsed);
+        const minutes = String(Math.floor(remaining / 60)).padStart(2, '0');
+        const seconds = String(remaining % 60).padStart(2, '0');
+        time.textContent = `${minutes}:${seconds}`;
       }
     }, 250);
 
@@ -1491,24 +1136,6 @@ async function mountSimulatedPreviewCall(container, record) {
   cameraButton?.addEventListener('click', togglePreviewCamera);
   micButton?.addEventListener('click', togglePreviewMic);
   updateSimulatedCallControls(container);
-
-  window.setTimeout(() => {
-    if (!container.isConnected || !screen) {
-      return;
-    }
-
-    screen.classList.remove('is-connecting');
-
-    if (preconnect) {
-      preconnect.hidden = true;
-    }
-
-    screen.classList.add('is-mic-hint-visible');
-    window.setTimeout(() => {
-      screen.classList.remove('is-mic-hint-visible');
-    }, 5600);
-    showSimulatedCallControlsTemporarily(screen);
-  }, PREVIEW_CONNECT_DELAY_MS);
 }
 
 function disposePreviewJitsi() {
@@ -1526,7 +1153,7 @@ function disposePreviewJitsi() {
   try {
     api.dispose();
   } catch (error) {
-    console.warn('Não consegui fechar a chamada de vídeo:', error);
+    console.warn('Nao consegui fechar a chamada de video:', error);
   }
 }
 
@@ -1630,88 +1257,27 @@ function getPreviewVisitorName() {
   }
 }
 
-async function getPreviewConversation(ip, includeFinished = true, phone = '') {
+async function getPreviewConversationByIp(ip, includeFinished = true) {
   const statuses = includeFinished
     ? PREVIEW_CHAT_VISIBLE_STATUSES
     : PREVIEW_CALL_ACTIVE_STATUSES;
-  let query = _supa
+  const { data, error } = await _supa
     .from(PREVIEW_CALL_TABLE)
     .select('*')
+    .eq('ip', ip)
     .in('status', statuses)
     .order('updated_at', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(1);
 
-  if (phone) {
-    query = query.eq('telefone', phone);
-  } else {
-    query = query.eq('ip', ip);
-  }
-
-  const { data, error } = await query;
-
   if (error) {
     throw error;
   }
 
-  if (data?.[0]) {
-    return data[0];
-  }
-
-  if (phone && ip) {
-    const { data: ipData, error: ipError } = await _supa
-      .from(PREVIEW_CALL_TABLE)
-      .select('*')
-      .eq('ip', ip)
-      .in('status', statuses)
-      .order('updated_at', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(1);
-
-    if (ipError) {
-      throw ipError;
-    }
-
-    return ipData?.[0] || null;
-  }
-
-  return null;
+  return data?.[0] || null;
 }
 
-async function syncPreviewConversationIdentity(record, ip, phone) {
-  if (!record?.id || (!phone && record.ip === ip)) {
-    return record;
-  }
-
-  const now = new Date().toISOString();
-  const details = {
-    ...getPreviewCallDetails(record),
-    telefone: phone || record.telefone || '',
-    current_ip: ip,
-    last_identity_sync_at: now
-  };
-  const updates = {
-    ip,
-    telefone: phone || record.telefone || null,
-    detalhes: details,
-    updated_at: now
-  };
-  const { data, error } = await _supa
-    .from(PREVIEW_CALL_TABLE)
-    .update(updates)
-    .eq('id', record.id)
-    .select('*')
-    .maybeSingle();
-
-  if (error) {
-    console.warn('Nao consegui atualizar telefone/IP da chamada:', error.message || error);
-    return record;
-  }
-
-  return data || { ...record, ...updates };
-}
-
-async function createPreviewCall(ip, phone = '') {
+async function createPreviewCall(ip) {
   const user = getStoredUser();
   const visitorName = getPreviewVisitorName();
   const now = new Date().toISOString();
@@ -1724,14 +1290,11 @@ async function createPreviewCall(ip, phone = '') {
       plano: user.plano || '',
       sessao_id: getAnalyticsSessionId(),
       ip,
-      telefone: phone || null,
       status: 'aguardando',
       meet_url: videoUrl,
       detalhes: {
         login_username: user.username || '',
-        visitor_name: visitorName,
-        telefone: phone || '',
-        current_ip: ip
+        visitor_name: visitorName
       },
       created_at: now,
       updated_at: now
@@ -1888,18 +1451,18 @@ function handlePreviewJitsiClosed() {
 
 function attachPreviewJitsiListeners(api) {
   api.addListener('videoConferenceJoined', () => {
-    setPreviewChatStatus('Chamada de vídeo conectada');
+    setPreviewChatStatus('Chamada de video conectada');
   });
   api.addListener('videoConferenceLeft', handlePreviewJitsiClosed);
   api.addListener('readyToClose', handlePreviewJitsiClosed);
   api.addListener('cameraError', () => {
-    setPreviewChatStatus('Permita o acesso à câmera e tente novamente');
+    setPreviewChatStatus('Permita o acesso a camera e tente novamente');
   });
   api.addListener('micError', () => {
     setPreviewChatStatus('Permita o acesso ao microfone e tente novamente');
   });
   api.addListener('peerConnectionFailure', () => {
-    setPreviewChatStatus('Conexão instável. Feche e toque em atender novamente.');
+    setPreviewChatStatus('Conexao instavel. Feche e toque em atender novamente.');
   });
 }
 
@@ -1933,48 +1496,6 @@ async function mountPreviewJitsiMeeting(container, record) {
   container.appendChild(iframe);
 }
 
-function isTemporaryPreviewSystemMessage(message) {
-  if (message.autor_tipo !== 'sistema') {
-    return false;
-  }
-
-  const text = String(message.texto || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-
-  return [
-    'usuario iniciou uma chamada previa',
-    'camera do visitante',
-    'visitante desligou a camera',
-    'visitante ligou a camera',
-    'chamada previa encerrada automaticamente'
-  ].some((pattern) => text.includes(pattern));
-}
-
-function shouldShowPreviewSystemMessageToVisitor(message) {
-  if (message.autor_tipo !== 'sistema') {
-    return true;
-  }
-
-  const text = String(message.texto || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-
-  return text.includes('conversa iniciada')
-    || text.includes('voce ja participou')
-    || text.includes('agora pague a chamada completa')
-    || text.includes('pague para fazer uma completa');
-}
-
-function getPreviewAdminReadAtMs() {
-  const readAt = getPreviewCallDetails(previewCallRecord).admin_read_at;
-  const time = readAt ? new Date(readAt).getTime() : 0;
-
-  return Number.isNaN(time) ? 0 : time;
-}
-
 function renderPreviewChatMessages(messages) {
   const container = document.getElementById('preview-chat-messages');
 
@@ -1982,20 +1503,11 @@ function renderPreviewChatMessages(messages) {
     return;
   }
 
-  const visibleMessages = messages.filter(shouldShowPreviewSystemMessageToVisitor);
-  const adminReadAtMs = getPreviewAdminReadAtMs();
-
-  if (previewChatTemporaryRenderTimer) {
-    window.clearTimeout(previewChatTemporaryRenderTimer);
-    previewChatTemporaryRenderTimer = null;
-  }
-
-  const renderKey = JSON.stringify(visibleMessages.map((message) => [
+  const renderKey = JSON.stringify(messages.map((message) => [
     message.id,
     message.texto,
     message.autor_tipo,
-    message.created_at,
-    adminReadAtMs
+    message.created_at
   ]));
 
   if (renderKey === previewChatLastRenderKey) {
@@ -2004,28 +1516,21 @@ function renderPreviewChatMessages(messages) {
 
   previewChatLastRenderKey = renderKey;
 
-  if (!visibleMessages.length) {
+  if (!messages.length) {
     container.innerHTML = `
       <div class="telegram-empty">
-        Mande uma mensagem para Amanda ou chame por chamada de vídeo.
+        Mande uma mensagem para Amanda ou chame por chamada de video.
       </div>
     `;
     return;
   }
 
-  container.innerHTML = visibleMessages.map((message) => {
+  container.innerHTML = messages.map((message) => {
     const mine = message.autor_tipo === 'usuario';
     const system = message.autor_tipo === 'sistema';
     const time = message.created_at
       ? new Date(message.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
       : '';
-    const createdAtMs = message.created_at ? new Date(message.created_at).getTime() : 0;
-    const wasRead = mine
-      && adminReadAtMs
-      && createdAtMs
-      && !Number.isNaN(createdAtMs)
-      && createdAtMs <= adminReadAtMs;
-    const meta = [time, wasRead ? 'Lida' : ''].filter(Boolean).join(' · ');
 
     if (system) {
       return `
@@ -2038,10 +1543,11 @@ function renderPreviewChatMessages(messages) {
     return `
       <div class="telegram-message ${mine ? 'is-mine' : 'is-admin'}">
         <span>${escapeHtml(message.texto || '')}</span>
-        <small>${escapeHtml(meta)}</small>
+        <small>${escapeHtml(time)}</small>
       </div>
     `;
   }).join('');
+  container.scrollTop = container.scrollHeight;
 }
 
 async function loadPreviewChatMessages() {
@@ -2094,8 +1600,8 @@ async function sendPreviewChatMessage(text, authorType = 'usuario') {
 function showPreviewCallMissed() {
   previewAutoJoinPending = false;
   stopPreviewRinging();
-  setPreviewChatStatus('Amanda não atendeu, tente mais tarde');
-  setPreviewCallEnterEnabled(false, 'Chamada de vídeo indisponível');
+  setPreviewChatStatus('Amanda nao atendeu, tente mais tarde');
+  setPreviewCallEnterEnabled(false, 'Chamada de video indisponivel');
 
   const button = document.getElementById('preview-call-request');
 
@@ -2115,8 +1621,6 @@ async function declinePreviewCall() {
   const isSimulatedCall = Boolean(getPreviewCallDetails(previewCallRecord).simulated_call);
 
   stopPreviewRinging();
-  previewAutoJoinPending = false;
-  previewIncomingCallKey = '';
 
   if (!previewCallRecord?.id) {
     closePreviewCallRoom();
@@ -2187,7 +1691,7 @@ function startPreviewRingingTimeout() {
         chamada_id: previewCallRecord.id,
         autor_tipo: 'sistema',
         autor_nome: 'Sistema',
-        texto: 'Amanda não atendeu a chamada de vídeo. Tente novamente mais tarde.'
+        texto: 'Amanda nao atendeu a chamada de video. Tente novamente mais tarde.'
       });
 
     showPreviewCallMissed();
@@ -2202,7 +1706,7 @@ async function requestPreviewVideoCall() {
   }
 
   if (previewCallRecord.status === 'finalizado') {
-    setPreviewChatStatus('Chamada prévia finalizada');
+    setPreviewChatStatus('Chamada previa finalizada');
     showPreviewCompleteShortcut(true);
     return;
   }
@@ -2238,9 +1742,7 @@ async function requestPreviewVideoCall() {
   setPreviewChatStatus('Chamando Amanda...');
   setPreviewRingingContent(
     'Chamando Amanda...',
-    amandaPresenceOnline
-      ? 'Aguarde alguns segundos. Amanda está recebendo sua chamada prévia.'
-      : 'Amanda está offline agora. Se ela não atender, a chamada encerra sozinha.'
+    'Aguarde alguns segundos. Amanda esta recebendo sua chamada previa.'
   );
   setPreviewRingingActions({ answer: false, decline: true });
   setPreviewRingingVisible(true);
@@ -2266,24 +1768,17 @@ async function requestPreviewVideoCall() {
       chamada_id: previewCallRecord.id,
       autor_tipo: 'sistema',
       autor_nome: 'Sistema',
-      texto: 'Usuário iniciou uma chamada prévia.'
+      texto: 'Usuario iniciou uma chamada previa.'
     });
 
   trackEvent('solicitou_videochamada_previa', {
     alvo_tipo: 'chat_chamada',
     alvo_titulo: 'Iniciou chamada previa simulada'
   });
-  if (amandaPresenceOnline) {
-    previewCallRingTimer = window.setTimeout(() => {
-      previewCallRingTimer = null;
-      if (!previewAutoJoinPending || !previewCallRecord?.id || previewCallRecord.status !== 'chamando') {
-        return;
-      }
-      enterPreviewCall();
-    }, PREVIEW_SIMULATED_RING_MS);
-  } else {
-    startPreviewRingingTimeout();
-  }
+  previewCallRingTimer = window.setTimeout(() => {
+    previewCallRingTimer = null;
+    enterPreviewCall();
+  }, PREVIEW_SIMULATED_RING_MS);
   loadPreviewChatMessages();
 }
 
@@ -2307,7 +1802,7 @@ async function ensurePreviewWelcomeMessage(record) {
       chamada_id: record.id,
       autor_tipo: 'sistema',
       autor_nome: 'Sistema',
-      texto: `Conversa iniciada. Amanda está ${amandaPresenceOnline ? 'online' : 'offline'}. Amanda foi notificada e responderá por aqui.`
+      texto: `Conversa iniciada. Amanda esta ${amandaPresenceOnline ? 'online' : 'offline'}. Amanda foi notificada e respondera por aqui.`
     });
 }
 
@@ -2363,23 +1858,23 @@ function applyPreviewCallStatus(record) {
 
     if (incomingAdminCall) {
       setPreviewRingingContent(
-        'Amanda está ligando para você...',
+        'Amanda esta ligando para voce...',
         'Toque em Atender chamada para entrar direto na videochamada.'
       );
       setPreviewRingingActions({ answer: true, decline: true });
       setPreviewRingingVisible(true);
       notifyPreviewIncomingCall(record);
-      setPreviewChatStatus('Amanda está te chamando agora');
+      setPreviewChatStatus('Amanda esta te chamando agora');
     } else {
       stopPreviewRinging();
       setPreviewChatStatus(record.status === 'em_chamada'
-        ? 'Chamada de vídeo em andamento'
+        ? 'Chamada de video em andamento'
         : 'Amanda atendeu. Toque para entrar na chamada.');
     }
-    setPreviewCallEnterEnabled(false, 'Chamada de vídeo liberada');
+    setPreviewCallEnterEnabled(false, 'Chamada de video liberada');
     if (requestButton) {
       requestButton.disabled = false;
-      requestButton.textContent = incomingAdminCall ? 'Atender chamada' : 'Entrar na chamada de vídeo';
+      requestButton.textContent = incomingAdminCall ? 'Atender chamada' : 'Entrar na chamada de video';
       requestButton.classList.add('is-ready', 'is-call-action');
       requestButton.classList.toggle('is-answer-action', incomingAdminCall);
     }
@@ -2389,16 +1884,13 @@ function applyPreviewCallStatus(record) {
 
   if (record.status === 'chamando') {
     const isSimulatedCall = Boolean(getPreviewCallDetails(record).simulated_call);
-    const simulatedMessage = amandaPresenceOnline
-      ? 'Aguarde alguns segundos. Amanda está recebendo sua chamada prévia.'
-      : 'Amanda está offline agora. Se ela não atender, a chamada encerra sozinha.';
 
     previewIncomingCallKey = '';
     setPreviewRingingContent(
       'Chamando Amanda...',
       isSimulatedCall
-        ? simulatedMessage
-        : 'Aguarde ela atender sua chamada de vídeo.'
+        ? 'Aguarde alguns segundos. Amanda esta recebendo sua chamada previa.'
+        : 'Aguarde ela atender sua chamada de video.'
     );
     setPreviewRingingActions({ answer: false, decline: true });
     setPreviewChatStatus('Chamando Amanda...');
@@ -2411,15 +1903,7 @@ function applyPreviewCallStatus(record) {
       requestButton.classList.remove('is-answer-action');
     }
 
-    if (isSimulatedCall && amandaPresenceOnline && previewAutoJoinPending && !previewCallRingTimer) {
-      previewCallRingTimer = window.setTimeout(() => {
-        previewCallRingTimer = null;
-        if (!previewAutoJoinPending || !previewCallRecord?.id || previewCallRecord.status !== 'chamando') {
-          return;
-        }
-        enterPreviewCall();
-      }, PREVIEW_SIMULATED_RING_MS);
-    } else if (!isSimulatedCall || !amandaPresenceOnline) {
+    if (!isSimulatedCall) {
       startPreviewRingingTimeout();
     }
 
@@ -2443,8 +1927,8 @@ function applyPreviewCallStatus(record) {
       videoStage.hidden = true;
     }
 
-    setPreviewChatStatus('Chamada prévia finalizada');
-    setPreviewCallEnterEnabled(false, 'Chamada prévia usada');
+    setPreviewChatStatus('Chamada previa finalizada');
+    setPreviewCallEnterEnabled(false, 'Chamada previa usada');
     if (requestButton) {
       requestButton.disabled = true;
       requestButton.textContent = 'Chamada finalizada';
@@ -2475,7 +1959,7 @@ function applyPreviewCallStatus(record) {
 
   stopPreviewRinging();
   previewIncomingCallKey = '';
-  setPreviewChatStatus(amandaPresenceOnline ? 'Amanda está online' : 'Amanda está offline');
+  setPreviewChatStatus(amandaPresenceOnline ? 'Amanda esta online' : 'Amanda esta offline');
   setPreviewCallEnterEnabled(false, 'Chamada de video');
   if (requestButton) {
     requestButton.disabled = false;
@@ -2525,7 +2009,7 @@ async function checkIncomingPreviewCallInBackground() {
 
   try {
     const ip = getPreviewCallIpKey(await getClientIp());
-    const activeCall = await getPreviewConversation(ip, true, getStoredPreviewPhone());
+    const activeCall = await getPreviewConversationByIp(ip, true);
 
     if (isPreviewIncomingAdminCall(activeCall)) {
       openPreviewCallRoom();
@@ -2577,28 +2061,23 @@ async function openPreviewCallRoom() {
     });
 
     const ip = getPreviewCallIpKey(await getClientIp());
-    const phone = await ensurePreviewPhone(ip);
     const includeFinished = !isPreviewCallTestIp(ip);
-    let activeCall = await getPreviewConversation(ip, includeFinished, phone);
+    let activeCall = await getPreviewConversationByIp(ip, includeFinished);
 
     if (!activeCall) {
-      activeCall = await createPreviewCall(ip, phone);
+      activeCall = await createPreviewCall(ip);
       trackEvent('entrou_fila_chamada_previa', {
         alvo_tipo: 'chamada_previa',
         alvo_titulo: 'Aguardando Amanda'
       });
-    } else {
-      activeCall = await syncPreviewConversationIdentity(activeCall, ip, phone);
     }
-
-    activeCall = await finishPreviewCallIfMarkedAsLeft(activeCall);
 
     await ensurePreviewWelcomeMessage(activeCall);
 
     if (activeCall.status === 'finalizado') {
       trackEvent('chamada_previa_repetida', {
         alvo_tipo: 'chamada_previa',
-        alvo_titulo: 'Telefone ja participou'
+        alvo_titulo: 'IP ja participou'
       });
       await ensurePreviewFinishedMessage(activeCall);
     }
@@ -2607,8 +2086,8 @@ async function openPreviewCallRoom() {
     startPreviewCallPolling();
     startPreviewChatPolling();
   } catch (error) {
-    console.error('Erro ao abrir chamada prévia:', error);
-    setPreviewChatStatus('Não consegui abrir a conversa');
+    console.error('Erro ao abrir chamada previa:', error);
+    setPreviewChatStatus('Nao consegui abrir a conversa');
     setPreviewCallEnterEnabled(false, 'Indisponivel');
   }
 }
@@ -2625,7 +2104,6 @@ function closePreviewCallRoom() {
 
   stopPreviewCallTimers();
   previewAutoJoinPending = false;
-  setPreviewPhoneGateVisible(false);
   stopPreviewRinging();
   disposePreviewJitsi();
 
@@ -2643,7 +2121,7 @@ function closePreviewCallRoom() {
 
   if (shouldFinishSimulated) {
     finishSimulatedPreviewCall('usuario_fechou').catch((error) => {
-      console.warn('Não consegui finalizar prévia simulada ao fechar:', error.message || error);
+      console.warn('Nao consegui finalizar previa simulada ao fechar:', error.message || error);
     });
   }
 
@@ -2661,7 +2139,7 @@ async function enterPreviewCall() {
   const now = new Date().toISOString();
   const analyticsPromise = trackEvent('clicou_entrar_chamada_previa', {
     alvo_tipo: 'chamada_previa',
-    alvo_titulo: 'Entrou na chamada prévia simulada',
+    alvo_titulo: 'Entrou na chamada previa simulada',
     alvo_url: videoUrl
   });
 
@@ -2669,20 +2147,13 @@ async function enterPreviewCall() {
   previewIncomingCallKey = '';
 
   try {
-    if (videoStage) {
-      videoStage.hidden = false;
-    }
-
     if (videoFrame) {
-      setPreviewChatStatus('Trocando chaves criptográficas...');
+      setPreviewChatStatus('Amanda atendeu. Liberando sua camera...');
       await mountSimulatedPreviewCall(videoFrame, previewCallRecord);
     }
   } catch (error) {
-    console.warn('Não consegui abrir chamada prévia simulada:', error.message || error);
-    setPreviewChatStatus(error.message || 'Não consegui abrir a chamada prévia.');
-    if (videoStage) {
-      videoStage.hidden = true;
-    }
+    console.warn('Nao consegui abrir chamada previa simulada:', error.message || error);
+    setPreviewChatStatus(error.message || 'Nao consegui abrir a chamada previa.');
     return;
   }
 
@@ -2714,6 +2185,11 @@ async function enterPreviewCall() {
         console.warn('Nao consegui marcar entrada na chamada:', error);
       }
     });
+
+  if (videoStage) {
+    videoStage.hidden = false;
+    videoStage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
 
   setPreviewChatStatus('Chamada previa em andamento');
 
@@ -2848,7 +2324,7 @@ function setAmandaPresence(isOnline) {
 
   wrapper.classList.toggle('is-online', amandaPresenceOnline);
   wrapper.classList.toggle('is-offline', !amandaPresenceOnline);
-  text.textContent = amandaPresenceOnline ? 'Amanda está online' : 'Amanda está offline';
+  text.textContent = amandaPresenceOnline ? 'Amanda esta online' : 'Amanda esta offline';
 }
 
 async function refreshAmandaPresence() {
@@ -3209,7 +2685,7 @@ async function loadContent() {
       console.error('Erro ao carregar conteudo:', error);
       document.getElementById('count-videos').textContent = '0';
       document.getElementById('count-fotos').textContent = '0';
-      renderGridMessage('videos-grid', 'Não consegui carregar os vídeos agora.');
+      renderGridMessage('videos-grid', 'Nao consegui carregar os videos agora.');
       renderGridMessage('fotos-grid', 'Nao consegui carregar as fotos agora.');
       return;
     }
@@ -3243,7 +2719,7 @@ async function loadContent() {
     console.error('Falha ao carregar conteudo:', error);
     document.getElementById('count-videos').textContent = '0';
     document.getElementById('count-fotos').textContent = '0';
-    renderGridMessage('videos-grid', 'Erro ao carregar vídeos.');
+    renderGridMessage('videos-grid', 'Erro ao carregar videos.');
     renderGridMessage('fotos-grid', 'Erro ao carregar fotos.');
   } finally {
     loadComments();
@@ -3255,7 +2731,7 @@ function renderVideos(videos) {
   grid.innerHTML = '';
 
   if (!videos.length) {
-    renderGridMessage('videos-grid', 'Nenhum vídeo disponível no momento.');
+    renderGridMessage('videos-grid', 'Nenhum video disponivel no momento.');
     return;
   }
 
@@ -3360,7 +2836,7 @@ function renderFotos(fotos, options = {}) {
     renderGridMessage(
       'fotos-grid',
       previewMode
-        ? 'Nenhuma prévia disponível no momento.'
+        ? 'Nenhuma previa disponivel no momento.'
         : 'Nenhuma foto disponivel no momento.'
     );
     return;
@@ -3386,7 +2862,7 @@ function renderFotos(fotos, options = {}) {
           <img
             src="${escapeHtml(thumbUrl)}"
             data-fallbacks="${encodeImageFallbacks(fallbackUrls)}"
-            alt="${escapeHtml(foto.titulo || 'Foto de prévia')}"
+            alt="${escapeHtml(foto.titulo || 'Foto de previa')}"
             loading="lazy"
             onerror="loadNextImageSource(this);"
           >
@@ -3693,7 +3169,7 @@ function applyVideoStartTime(videoElement, startTime) {
         seekToStartTime();
       }, 180);
     } catch (error) {
-      console.warn('Não foi possível ajustar o início do vídeo:', error);
+      console.warn('Nao foi possivel ajustar o inicio do video:', error);
 
       if (attempts < maxAttempts) {
         window.setTimeout(seekToStartTime, 220);
@@ -3944,7 +3420,7 @@ async function requestElementFullscreen(element) {
   try {
     await requestFullscreen.call(element);
   } catch (error) {
-    console.warn('Não foi possível ativar fullscreen:', error);
+    console.warn('Nao foi possivel ativar fullscreen:', error);
   }
 }
 
@@ -3961,7 +3437,7 @@ async function exitElementFullscreen() {
   try {
     await exitFullscreen.call(document);
   } catch (error) {
-    console.warn('Não foi possível sair do fullscreen:', error);
+    console.warn('Nao foi possivel sair do fullscreen:', error);
   }
 }
 
@@ -4059,7 +3535,7 @@ function openVideo(url, titulo) {
     setupModalQualitySelect(player, modalVideo, qualityOptions, startTime);
     setupDemoVideoLock(modalVideo, startTime);
   } else {
-    alert('Link do vídeo inválido');
+    alert('Link do video invalido');
     return;
   }
 
@@ -4108,7 +3584,7 @@ async function loadComments() {
     counter.textContent = '0';
     list.innerHTML = `
       <div class="comment-empty">
-        Não consegui carregar os comentários agora.
+        Nao consegui carregar os comentarios agora.
       </div>
     `;
     return;
@@ -4121,7 +3597,7 @@ async function loadComments() {
   if (!comments.length) {
     list.innerHTML = `
       <div class="comment-empty">
-        Ainda não tem comentários. Seja o primeiro a comentar.
+        Ainda nao tem comentarios. Seja o primeiro a comentar.
       </div>
     `;
     return;
@@ -4200,7 +3676,7 @@ async function postComment() {
 
   if (error) {
     console.error('Erro ao enviar comentario:', error);
-    alert('Não consegui enviar o comentário agora.');
+    alert('Nao consegui enviar o comentario agora.');
     return;
   }
 
@@ -4237,17 +3713,7 @@ syncModalViewportHeight();
 window.addEventListener('resize', syncModalViewportHeight);
 window.addEventListener('orientationchange', syncModalViewportHeight);
 document.addEventListener('fullscreenchange', syncModalViewportHeight);
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') {
-    finishPreviewCallOnBackgroundExit('saiu_da_aba');
-  }
-});
-window.addEventListener('pagehide', () => {
-  finishPreviewCallOnBackgroundExit('saiu_da_pagina');
-});
 window.addEventListener('beforeunload', () => {
-  finishPreviewCallOnBackgroundExit('saiu_da_pagina');
-
   if (presencePollTimer) {
     window.clearInterval(presencePollTimer);
   }

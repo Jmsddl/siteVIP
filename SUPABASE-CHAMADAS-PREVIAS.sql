@@ -9,7 +9,6 @@ create table if not exists public.chamadas_previas (
   plano text,
   sessao_id text,
   ip text not null,
-  telefone text,
   status text not null default 'aguardando',
   meet_url text,
   entrou_em timestamptz,
@@ -25,7 +24,6 @@ alter table public.chamadas_previas
   add column if not exists plano text,
   add column if not exists sessao_id text,
   add column if not exists ip text not null default 'sem-ip',
-  add column if not exists telefone text,
   add column if not exists status text not null default 'aguardando',
   add column if not exists meet_url text,
   add column if not exists entrou_em timestamptz,
@@ -51,18 +49,12 @@ create index if not exists chamadas_previas_ip_status_idx
 create index if not exists chamadas_previas_ip_updated_idx
   on public.chamadas_previas (ip, updated_at desc);
 
-create index if not exists chamadas_previas_telefone_updated_idx
-  on public.chamadas_previas (telefone, updated_at desc);
-
 drop index if exists public.chamadas_previas_ip_ativa_idx;
 
--- Depois que a chamada previa for finalizada, o mesmo telefone nao participa de novo.
+-- Depois que a chamada previa for finalizada, o mesmo IP nao participa de novo.
 drop index if exists public.chamadas_previas_ip_finalizado_idx;
-drop index if exists public.chamadas_previas_telefone_finalizado_idx;
 
-create unique index if not exists chamadas_previas_telefone_finalizado_idx
-  on public.chamadas_previas (telefone)
+create unique index if not exists chamadas_previas_ip_finalizado_idx
+  on public.chamadas_previas (ip)
   where status = 'finalizado'
-    and telefone is not null
-    and telefone <> ''
     and ip <> '177.10.146.100';

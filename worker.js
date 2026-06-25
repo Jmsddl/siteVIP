@@ -1,47 +1,13 @@
 const DEFAULT_JAAS_APP_ID = 'vpaas-magic-cookie-40aa8f8eaa4b44919530d6a192485f88';
-const SECURITY_HEADERS = {
-  'x-content-type-options': 'nosniff',
-  'x-frame-options': 'DENY',
-  'referrer-policy': 'strict-origin-when-cross-origin',
-  'permissions-policy': 'geolocation=(), payment=(), usb=(), bluetooth=(), clipboard-read=(), camera=(self), microphone=(self), fullscreen=(self)',
-  'content-security-policy': [
-    "default-src 'self'",
-    "base-uri 'self'",
-    "object-src 'none'",
-    "frame-ancestors 'none'",
-    "form-action 'self'",
-    "img-src 'self' data: blob: https:",
-    "media-src 'self' blob: https:",
-    "connect-src 'self' https: wss:",
-    "frame-src 'self' https://drive.google.com https://*.google.com https://8x8.vc https://*.8x8.vc https://meet.jit.si",
-    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://8x8.vc https://*.8x8.vc",
-    "style-src 'self' 'unsafe-inline'",
-    "font-src 'self' data: https:",
-    "worker-src 'self'",
-    "manifest-src 'self'"
-  ].join('; ')
-};
-
-function withSecurityHeaders(response) {
-  const secured = new Response(response.body, response);
-
-  Object.entries(SECURITY_HEADERS).forEach(([key, value]) => {
-    if (!secured.headers.has(key)) {
-      secured.headers.set(key, value);
-    }
-  });
-
-  return secured;
-}
 
 function jsonResponse(data, status = 200) {
-  return withSecurityHeaders(new Response(JSON.stringify(data), {
+  return new Response(JSON.stringify(data), {
     status,
     headers: {
       'content-type': 'application/json; charset=utf-8',
       'cache-control': 'no-store'
     }
-  }));
+  });
 }
 
 function base64UrlEncode(input) {
@@ -191,7 +157,6 @@ export default {
       return handleJaasToken(request, env);
     }
 
-    const response = await env.ASSETS.fetch(request);
-    return withSecurityHeaders(response);
+    return env.ASSETS.fetch(request);
   }
 };
