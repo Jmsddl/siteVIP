@@ -95,7 +95,7 @@ const PREVIEW_CHAT_POLL_MS = 3000;
 const PREVIEW_CALL_RING_TIMEOUT_MS = 45000;
 const PREVIEW_SIMULATED_RING_MS = 5600;
 const PREVIEW_SIMULATED_CALL_DEFAULT_SECONDS = 18;
-const PREVIEW_SIMULATED_CONTROLS_HIDE_MS = 3600;
+const PREVIEW_SIMULATED_CONTROLS_HIDE_MS = 5200;
 const PREVIEW_CALL_ACTIVE_STATUSES = ['aguardando', 'chamando', 'liberado', 'em_chamada'];
 const PREVIEW_CHAT_VISIBLE_STATUSES = ['aguardando', 'chamando', 'liberado', 'em_chamada', 'finalizado'];
 const PREVIEW_CALL_TEST_IPS = ['177.10.146.100'];
@@ -1355,6 +1355,7 @@ async function mountSimulatedPreviewCall(container, record) {
           <span>Desligar camera</span>
         </button>
         <button class="sim-call-control" type="button" data-sim-toggle-mic>
+          <span class="sim-call-mic-hint">Amanda silenciou o microfone dela</span>
           <b>
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 14a4 4 0 0 0 4-4V6a4 4 0 0 0-8 0v4a4 4 0 0 0 4 4z" />
@@ -1496,6 +1497,10 @@ async function mountSimulatedPreviewCall(container, record) {
       preconnect.hidden = true;
     }
 
+    screen.classList.add('is-mic-hint-visible');
+    window.setTimeout(() => {
+      screen.classList.remove('is-mic-hint-visible');
+    }, 5600);
     showSimulatedCallControlsTemporarily(screen);
   }, PREVIEW_CONNECT_DELAY_MS);
 }
