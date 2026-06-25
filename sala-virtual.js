@@ -26,6 +26,7 @@ let roomInitialLoad = true;
 let roomAlertPopupTimer = null;
 let roomTitleAlertTimer = null;
 let roomRowsRenderKey = '';
+let roomSidePanelRenderKey = '';
 let roomKnownUserMessageIds = new Set();
 let roomMessagesHydrated = false;
 let roomIncomingCallId = null;
@@ -620,16 +621,19 @@ function renderRoomRows() {
 
   const renderKey = JSON.stringify(roomRows.map((row) => [
     row.id,
+    row.username,
+    row.plano,
+    getRoomLoginUsername(row),
     row.status,
     row.telefone,
-    row.updated_at,
+    row.ip,
+    row.sessao_id,
+    row.created_at,
     row.meet_url,
-    getRoomDetails(row).admin_read_at || '',
     roomOpenChatId === row.id
   ]));
 
   if (renderKey === roomRowsRenderKey) {
-    renderRoomSidePanel();
     loadRoomMessagesForRows();
     return;
   }
@@ -732,6 +736,7 @@ function renderRoomSidePanel() {
     panel.innerHTML = '';
     workspace?.classList.remove('has-open-chat');
     roomOpenChatId = '';
+    roomSidePanelRenderKey = '';
     return;
   }
 
@@ -746,9 +751,29 @@ function renderRoomSidePanel() {
   const planLine = loginUsername
     ? `${row.plano || '-'} - login ${loginUsername}`
     : (row.plano || '-');
+  const panelKey = JSON.stringify([
+    row.id,
+    row.username,
+    row.plano,
+    loginUsername,
+    row.status,
+    row.meet_url,
+    canOpenVideo,
+    canStartAdminCall,
+    isWaiting,
+    isCalling,
+    isReleased,
+    isInCall
+  ]);
 
   workspace?.classList.add('has-open-chat');
   panel.hidden = false;
+
+  if (roomSidePanelRenderKey === panelKey && document.getElementById(`room-chat-${row.id}`)) {
+    return;
+  }
+
+  roomSidePanelRenderKey = panelKey;
   panel.innerHTML = `
     <div class="room-side-head">
       <button class="room-side-back" type="button" onclick="closeRoomChatPanel()">
