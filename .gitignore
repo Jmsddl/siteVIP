@@ -1,0 +1,8 @@
+*.pk
+*.pem
+Key *.pk
+Key *.pem
+.dev.vars
+.env
+.env.*
+!.env.example
