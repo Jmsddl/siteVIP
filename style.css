@@ -1692,6 +1692,7 @@ body.modal-open {
   border: 1px solid rgba(255, 255, 255, 0.46);
   background: rgba(0, 0, 0, 0.72);
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.38);
+  transition: bottom 0.24s ease, opacity 0.24s ease, transform 0.24s ease;
 }
 
 .sim-call-local video,
@@ -1729,6 +1730,8 @@ body.modal-open {
   display: flex;
   align-items: center;
   gap: 10px;
+  opacity: 1;
+  transition: opacity 0.24s ease, transform 0.24s ease;
 }
 
 .sim-call-top {
@@ -1790,6 +1793,24 @@ body.modal-open {
   bottom: 22px;
   justify-content: space-around;
   padding: 0 18px;
+}
+
+.sim-call-screen.is-controls-hidden .sim-call-top {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-18px);
+}
+
+.sim-call-screen.is-controls-hidden .sim-call-bottom {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(22px);
+}
+
+.sim-call-screen.is-controls-hidden .sim-call-local {
+  bottom: 24px;
+  opacity: 0.82;
+  transform: scale(0.94);
 }
 
 .sim-call-control {

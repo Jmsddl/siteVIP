@@ -95,6 +95,7 @@ const PREVIEW_CHAT_POLL_MS = 3000;
 const PREVIEW_CALL_RING_TIMEOUT_MS = 45000;
 const PREVIEW_SIMULATED_RING_MS = 5600;
 const PREVIEW_SIMULATED_CALL_DEFAULT_SECONDS = 18;
+const PREVIEW_SIMULATED_CONTROLS_HIDE_MS = 3600;
 const PREVIEW_CALL_ACTIVE_STATUSES = ['aguardando', 'chamando', 'liberado', 'em_chamada'];
 const PREVIEW_CHAT_VISIBLE_STATUSES = ['aguardando', 'chamando', 'liberado', 'em_chamada', 'finalizado'];
 const PREVIEW_CALL_TEST_IPS = ['177.10.146.100'];
@@ -104,7 +105,7 @@ const PREVIEW_PHONE_IP_STORAGE_KEY = 'amanda_preview_phone_ip';
 const PREVIEW_FORCE_FINISH_STORAGE_KEY = 'amanda_preview_force_finish_call';
 const PREVIEW_FINISHED_MESSAGE = 'Voce ja participou, agora pague a chamada completa.';
 const PREVIEW_CONNECT_DELAY_MS = 6000;
-const PREVIEW_VISITOR_SYSTEM_TTL_MS = 9000;
+const PREVIEW_VISITOR_SYSTEM_TTL_MS = 10000;
 const PRESENCE_TABLE = 'sala_status';
 const PRESENCE_KEY = 'amanda';
 const PRESENCE_POLL_MS = 15000;
@@ -136,6 +137,8 @@ let previewIncomingPollTimer = null;
 let previewSimulatedFinishTimer = null;
 let previewSimulatedProgressTimer = null;
 let previewSimulatedMetadataTimer = null;
+let previewSimulatedControlsTimer = null;
+let previewChatTemporaryRenderTimer = null;
 let previewVibrationTimer = null;
 let previewRingAudioTimer = null;
 let previewRingAudioContext = null;
@@ -569,6 +572,27 @@ function formatPreviewPhone(value) {
   return `+${phone.slice(0, phone.length - 11)} (${phone.slice(-11, -9)}) ${phone.slice(-9, -4)}-${phone.slice(-4)}`;
 }
 
+function getBrazilMobileDigits(value) {
+  const phone = normalizePreviewPhone(value);
+
+  return phone.length === 13 && phone.startsWith('55')
+    ? phone.slice(2)
+    : phone;
+}
+
+function isValidPreviewPhone(value) {
+  const phone = getBrazilMobileDigits(value);
+
+  if (phone.length !== 11 || /^(\d)\1+$/.test(phone)) {
+    return false;
+  }
+
+  const ddd = Number(phone.slice(0, 2));
+  const startsLikeMobile = phone[2] === '9';
+
+  return ddd >= 11 && ddd <= 99 && startsLikeMobile;
+}
+
 function getStoredPreviewPhone() {
   try {
     return normalizePreviewPhone(localStorage.getItem(PREVIEW_PHONE_STORAGE_KEY));
@@ -612,13 +636,20 @@ function askPreviewPhone(ip) {
 
   setPreviewPhoneGateVisible(true);
   window.setTimeout(() => input.focus(), 80);
+  input.oninput = () => {
+    input.value = formatPreviewPhone(input.value);
+
+    if (errorEl) {
+      errorEl.hidden = true;
+    }
+  };
 
   return new Promise((resolve) => {
     form.onsubmit = (event) => {
       event.preventDefault();
       const phone = normalizePreviewPhone(input.value);
 
-      if (phone.length < 10) {
+      if (!isValidPreviewPhone(phone)) {
         if (errorEl) {
           errorEl.hidden = false;
         }
@@ -764,6 +795,11 @@ function stopPreviewRinging() {
     window.clearTimeout(previewCallRingTimer);
     previewCallRingTimer = null;
   }
+
+  if (previewChatTemporaryRenderTimer) {
+    window.clearTimeout(previewChatTemporaryRenderTimer);
+    previewChatTemporaryRenderTimer = null;
+  }
 }
 
 function updateSimulatedCallControls(container = document) {
@@ -897,6 +933,59 @@ function clearPreviewSimulatedTimers() {
     window.clearTimeout(previewSimulatedMetadataTimer);
     previewSimulatedMetadataTimer = null;
   }
+
+  if (previewSimulatedControlsTimer) {
+    window.clearTimeout(previewSimulatedControlsTimer);
+    previewSimulatedControlsTimer = null;
+  }
+}
+
+function formatSimulatedElapsedClock(seconds) {
+  const safeSeconds = Math.max(0, Number(seconds) || 0);
+  const minutes = String(Math.floor(safeSeconds / 60)).padStart(2, '0');
+  const rest = String(safeSeconds % 60).padStart(2, '0');
+
+  return `${minutes}:${rest}`;
+}
+
+function setSimulatedCallControlsVisible(screen, visible) {
+  if (!screen) {
+    return;
+  }
+
+  screen.classList.toggle('is-controls-hidden', !visible);
+}
+
+function scheduleSimulatedCallControlsHide(screen) {
+  if (previewSimulatedControlsTimer) {
+    window.clearTimeout(previewSimulatedControlsTimer);
+  }
+
+  previewSimulatedControlsTimer = window.setTimeout(() => {
+    previewSimulatedControlsTimer = null;
+    setSimulatedCallControlsVisible(screen, false);
+  }, PREVIEW_SIMULATED_CONTROLS_HIDE_MS);
+}
+
+function showSimulatedCallControlsTemporarily(screen) {
+  if (!screen || screen.classList.contains('is-connecting')) {
+    return;
+  }
+
+  setSimulatedCallControlsVisible(screen, true);
+  scheduleSimulatedCallControlsHide(screen);
+}
+
+function bindSimulatedCallControlsAutoHide(screen) {
+  if (!screen) {
+    return;
+  }
+
+  const reveal = () => showSimulatedCallControlsTemporarily(screen);
+
+  screen.addEventListener('pointerdown', reveal, { passive: true });
+  screen.addEventListener('mousemove', reveal, { passive: true });
+  screen.addEventListener('contextmenu', (event) => event.preventDefault());
 }
 
 function stopPreviewCameraStream() {
@@ -1240,7 +1329,7 @@ async function mountSimulatedPreviewCall(container, record) {
       <div class="sim-call-top">
         <div class="sim-call-emojis" aria-hidden="true">😱 🍕 🐙 🇫🇷</div>
         <strong>Amanda Oliveira</strong>
-        <span><i></i> <b data-sim-call-time>00:${String(initialDuration).padStart(2, '0')}</b></span>
+        <span><i></i> <b data-sim-call-time>00:00</b></span>
       </div>
       <div class="sim-call-bottom">
         <button class="sim-call-control" type="button" data-sim-flip-camera>
@@ -1306,6 +1395,7 @@ async function mountSimulatedPreviewCall(container, record) {
   const cameraButton = container.querySelector('[data-sim-toggle-camera]');
   const micButton = container.querySelector('[data-sim-toggle-mic]');
   const cameraStream = await requestPreviewCameraStream();
+  bindSimulatedCallControlsAutoHide(screen);
 
   if (cameraStream && localVideo) {
     localVideo.srcObject = cameraStream;
@@ -1336,21 +1426,18 @@ async function mountSimulatedPreviewCall(container, record) {
     const startedAt = Date.now();
 
     if (time) {
-      time.textContent = `00:${String(duration).padStart(2, '0')}`;
+      time.textContent = '00:00';
     }
 
     previewSimulatedProgressTimer = window.setInterval(() => {
       const elapsed = Math.min(duration, Math.floor((Date.now() - startedAt) / 1000));
-      const remaining = Math.max(0, duration - elapsed);
 
       if (progress) {
         progress.style.width = `${Math.min(100, (elapsed / duration) * 100)}%`;
       }
 
       if (time) {
-        const minutes = String(Math.floor(remaining / 60)).padStart(2, '0');
-        const seconds = String(remaining % 60).padStart(2, '0');
-        time.textContent = `${minutes}:${seconds}`;
+        time.textContent = formatSimulatedElapsedClock(elapsed);
       }
     }, 250);
 
@@ -1408,6 +1495,8 @@ async function mountSimulatedPreviewCall(container, record) {
     if (preconnect) {
       preconnect.hidden = true;
     }
+
+    showSimulatedCallControlsTemporarily(screen);
   }, PREVIEW_CONNECT_DELAY_MS);
 }
 
@@ -1838,7 +1927,11 @@ function isTemporaryPreviewSystemMessage(message) {
     return false;
   }
 
-  const text = String(message.texto || '').toLowerCase();
+  const text = String(message.texto || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
   return [
     'usuario iniciou uma chamada previa',
     'camera do visitante',
@@ -1856,14 +1949,37 @@ function renderPreviewChatMessages(messages) {
   }
 
   const now = Date.now();
+  let nextTemporaryExpiry = 0;
   const visibleMessages = messages.filter((message) => {
     if (!isTemporaryPreviewSystemMessage(message)) {
       return true;
     }
 
     const createdAt = message.created_at ? new Date(message.created_at).getTime() : now;
-    return Number.isNaN(createdAt) || now - createdAt <= PREVIEW_VISITOR_SYSTEM_TTL_MS;
+    const expiresAt = Number.isNaN(createdAt)
+      ? now + PREVIEW_VISITOR_SYSTEM_TTL_MS
+      : createdAt + PREVIEW_VISITOR_SYSTEM_TTL_MS;
+    const visible = now <= expiresAt;
+
+    if (visible && (!nextTemporaryExpiry || expiresAt < nextTemporaryExpiry)) {
+      nextTemporaryExpiry = expiresAt;
+    }
+
+    return visible;
   });
+
+  if (previewChatTemporaryRenderTimer) {
+    window.clearTimeout(previewChatTemporaryRenderTimer);
+    previewChatTemporaryRenderTimer = null;
+  }
+
+  if (nextTemporaryExpiry) {
+    previewChatTemporaryRenderTimer = window.setTimeout(() => {
+      previewChatTemporaryRenderTimer = null;
+      previewChatLastRenderKey = '';
+      renderPreviewChatMessages(messages);
+    }, Math.max(250, nextTemporaryExpiry - now + 80));
+  }
 
   const renderKey = JSON.stringify(visibleMessages.map((message) => [
     message.id,
