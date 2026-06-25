@@ -375,6 +375,7 @@ create table if not exists public.chamadas_previas (
   plano text,
   sessao_id text,
   ip text,
+  telefone text,
   status text not null default 'aguardando',
   meet_url text,
   created_at timestamptz not null default now(),
@@ -395,6 +396,9 @@ add column if not exists sessao_id text;
 
 alter table public.chamadas_previas
 add column if not exists ip text;
+
+alter table public.chamadas_previas
+add column if not exists telefone text;
 
 alter table public.chamadas_previas
 add column if not exists status text not null default 'aguardando';
@@ -805,10 +809,13 @@ on public.analytics_eventos (sessao_id, created_at desc);
 
 drop index if exists public.chamadas_previas_ip_ativa_idx;
 drop index if exists public.chamadas_previas_ip_finalizado_idx;
+drop index if exists public.chamadas_previas_telefone_finalizado_idx;
 
-create unique index if not exists chamadas_previas_ip_finalizado_idx
-on public.chamadas_previas (ip)
+create unique index if not exists chamadas_previas_telefone_finalizado_idx
+on public.chamadas_previas (telefone)
 where status = 'finalizado'
+  and telefone is not null
+  and telefone <> ''
   and ip <> '177.10.146.100';
 
 create index if not exists chamadas_previas_ip_sessao_status_idx
@@ -819,6 +826,9 @@ on public.chamadas_previas (status, created_at);
 
 create index if not exists chamadas_previas_ip_updated_idx
 on public.chamadas_previas (ip, updated_at desc);
+
+create index if not exists chamadas_previas_telefone_updated_idx
+on public.chamadas_previas (telefone, updated_at desc);
 
 create index if not exists chamada_mensagens_chamada_created_idx
 on public.chamada_mensagens (chamada_id, created_at);

@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 
 <html lang="pt-BR">
 <head>
@@ -9,7 +9,7 @@
 
   <link rel="manifest" href="manifest.webmanifest"/>
   <link rel="apple-touch-icon" href="icon-192.png"/>
-<link rel="stylesheet" href="style.css?v=20260622-sim-call-v9"/>
+<link rel="stylesheet" href="style.css?v=20260625-sim-call-v22"/>
 
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
@@ -28,7 +28,7 @@
         type="button"
         onclick="openPreviewCallRoom()"
       >
-        Fazer chamada previa agora
+        Fazer chamada prévia agora
       </button>
       <button
         class="btn-call-action is-primary"
@@ -45,7 +45,7 @@
       onclick="window.location.href='analytics.html'"
       hidden
     >
-      Analise
+      Análise
     </button>
     <button
       class="btn-analytics"
@@ -81,7 +81,7 @@
   aria-live="polite"
 >
   <span class="presence-dot"></span>
-  <strong id="profile-presence-text">Amanda esta offline</strong>
+  <strong id="profile-presence-text">Amanda está offline</strong>
 </div>
 
 <p class="profile-bio">
@@ -250,7 +250,7 @@ Aqui eu sou completamente sua:
       class="btn-close"
       onclick="closeVideoModal()"
     >
-      ✕ Fechar
+      × Fechar
     </button>
   </div>
 </div>
@@ -269,11 +269,36 @@ Aqui eu sou completamente sua:
       <button
         class="call-modal-close"
         type="button"
-        aria-label="Fechar chamada previa"
+        aria-label="Fechar chamada prévia"
         onclick="closePreviewCallRoom()"
       >
         x
       </button>
+      <div class="preview-phone-gate" id="preview-phone-gate" hidden>
+        <img src="sua-foto.jpg" alt="Amanda Oliveira" />
+        <span>Chat ao vivo</span>
+        <h2>Estamos abrindo o chat com Amanda</h2>
+        <p>
+          Digite seu número para liberar a conversa e recuperar o atendimento se mudar de internet.
+        </p>
+        <form id="preview-phone-form">
+          <input
+            id="preview-phone-input"
+            type="tel"
+            inputmode="tel"
+            autocomplete="tel"
+            maxlength="19"
+            pattern="(\+?55\s*)?\(?[1-9]{2}\)?\s*9[0-9]{4}-?[0-9]{4}"
+            placeholder="Ex: 11999999999"
+          />
+          <small id="preview-phone-error" hidden>
+            Digite um celular válido com DDD.
+          </small>
+          <button class="btn-primary" type="submit">
+            Liberar chat agora
+          </button>
+        </form>
+      </div>
       <div class="telegram-chat-header">
         <img src="sua-foto.jpg" alt="Amanda" />
         <div>
@@ -294,7 +319,7 @@ Aqui eu sou completamente sua:
           <img src="sua-foto.jpg" alt="Amanda Oliveira" />
         </div>
         <strong>Chamando Amanda...</strong>
-        <p>Aguarde alguns segundos. A previa vai abrir sem audio.</p>
+        <p>Aguarde alguns segundos. A prévia vai abrir sem áudio.</p>
         <div class="telegram-call-ringing-actions">
           <button
             class="ring-answer-button"
@@ -376,14 +401,14 @@ Aqui eu sou completamente sua:
       <span class="call-modal-kicker">Chamada completa</span>
       <h2>Escolha o tempo da chamada</h2>
       <p>
-        Selecione uma opcao para liberar o checkout da chamada.
+        Selecione uma opção para liberar o checkout da chamada.
       </p>
       <select
         class="vip-plan-select"
         id="full-call-select"
         aria-label="Escolha o tempo da chamada completa"
       >
-        <option value="">Selecione uma opcao</option>
+        <option value="">Selecione uma opção</option>
         <option value="5_min">Chamada 5 minutos</option>
         <option value="10_min">Chamada 10 minutos</option>
       </select>
@@ -425,8 +450,8 @@ Aqui eu sou completamente sua:
       id="floating-offer-close-hint"
       aria-hidden="true"
     >
-      <span>Clique no X para fechar</span>
-      <b>➜</b>
+      <span>Toque no X para fechar</span>
+      <b>&rarr;</b>
     </div>
 
     <div class="floating-offer-list" id="floating-offer-list"></div>
@@ -460,9 +485,12 @@ Aqui eu sou completamente sua:
 
   <script src="auth.js?v=20260617-analytics"></script>
 
-  <script src="app.js?v=20260622-sim-call-v9"></script>
+  <script src="app.js?v=20260625-sim-call-v22"></script>
 
-  <script src="pwa.js?v=20260622-sim-call-v9"></script>
+  <script src="pwa.js?v=20260625-sim-call-v22"></script>
 
 </body>
 </html>
+
+
+
