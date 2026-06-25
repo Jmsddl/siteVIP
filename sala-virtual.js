@@ -30,6 +30,9 @@ let roomKnownUserMessageIds = new Set();
 let roomMessagesHydrated = false;
 let roomIncomingCallId = null;
 let roomJitsiApis = new Map();
+let roomOpenChatId = '';
+let roomMessagesById = new Map();
+let roomMarkingReadIds = new Set();
 
 function getRoomUser() {
   try {
@@ -73,6 +76,52 @@ function getRoomDetails(row) {
   return row?.detalhes && typeof row.detalhes === 'object'
     ? row.detalhes
     : {};
+}
+
+function getRoomDisplayName(row) {
+  if (row?.username) {
+    return row.username;
+  }
+
+  const phone = String(row?.telefone || getRoomDetails(row).telefone || '').replace(/\D/g, '');
+  const session = String(row?.sessao_id || row?.id || '').replace(/[^a-zA-Z0-9]/g, '');
+  const code = phone.slice(-4) || session.slice(-4) || '0000';
+
+  return `Visitante ${code}`;
+}
+
+function getRoomAdminReadAtMs(row) {
+  const readAt = getRoomDetails(row).admin_read_at;
+  const time = readAt ? new Date(readAt).getTime() : 0;
+
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function countRoomUnreadMessages(row, messages = []) {
+  const readAtMs = getRoomAdminReadAtMs(row);
+
+  return messages.filter((message) => {
+    if (message.autor_tipo !== 'usuario' || !message.created_at) {
+      return false;
+    }
+
+    const createdAtMs = new Date(message.created_at).getTime();
+
+    return !Number.isNaN(createdAtMs) && (!readAtMs || createdAtMs > readAtMs);
+  }).length;
+}
+
+function updateRoomUnreadBadge(row, unreadCount) {
+  const badge = document.getElementById(`room-unread-${row.id}`);
+
+  if (!badge) {
+    return;
+  }
+
+  badge.hidden = unreadCount <= 0;
+  badge.textContent = unreadCount === 1
+    ? '1 nova'
+    : `${unreadCount} novas`;
 }
 
 function getRoomVideoUrl(rowOrId) {
@@ -574,7 +623,9 @@ function renderRoomRows() {
     row.status,
     row.telefone,
     row.updated_at,
-    row.meet_url
+    row.meet_url,
+    getRoomDetails(row).admin_read_at || '',
+    roomOpenChatId === row.id
   ]));
 
   if (renderKey === roomRowsRenderKey) {
@@ -598,102 +649,174 @@ function renderRoomRows() {
     const isCalling = row.status === 'chamando';
     const isReleased = row.status === 'liberado';
     const isInCall = row.status === 'em_chamada';
-    const isFinished = row.status === 'finalizado';
     const canOpenVideo = isReleased || isInCall;
-    const canStartAdminCall = isWaiting || isFinished;
+    const canStartAdminCall = isWaiting || row.status === 'finalizado';
     const loginUsername = getRoomLoginUsername(row);
     const details = getRoomDetails(row);
     const phone = row.telefone || details.telefone || '';
+    const rowId = escapeRoom(row.id);
     const planLine = loginUsername
       ? `${row.plano || '-'} - login ${loginUsername}`
       : (row.plano || '-');
+    const messages = roomMessagesById.get(row.id) || [];
+    const unreadCount = countRoomUnreadMessages(row, messages);
+    const isOpen = roomOpenChatId === row.id;
+    const statusClass = String(row.status || 'aguardando').replace(/[^a-z0-9_-]/gi, '');
 
     return `
-      <article class="virtual-room-card">
-        <div class="virtual-room-card-head">
-          <div>
-            <strong>${escapeRoom(row.username || 'Anonimo')}</strong>
-            <span>${escapeRoom(planLine)}</span>
+      <article class="virtual-room-card ${isOpen ? 'is-open' : ''}">
+        <button
+          class="room-conversation-summary"
+          type="button"
+          onclick="toggleRoomChat('${rowId}')"
+          aria-expanded="${isOpen ? 'true' : 'false'}"
+        >
+          <div class="room-conversation-top">
+            <div class="room-conversation-main">
+              <strong>${escapeRoom(getRoomDisplayName(row))}</strong>
+              <span>${escapeRoom(planLine)}</span>
+            </div>
+            <div class="room-conversation-side">
+              <b class="room-status-pill is-${escapeRoom(statusClass)}">
+                ${escapeRoom(getRoomStatusLabel(row.status))}
+              </b>
+              <span
+                class="room-unread-badge"
+                id="room-unread-${rowId}"
+                ${unreadCount > 0 ? '' : 'hidden'}
+              >
+                ${unreadCount === 1 ? '1 nova' : `${unreadCount} novas`}
+              </span>
+            </div>
           </div>
-          <b class="room-status-pill is-${escapeRoom(row.status || 'aguardando')}">
-            ${escapeRoom(getRoomStatusLabel(row.status))}
-          </b>
-        </div>
-        <div class="virtual-room-meta">
-          <span>Telefone: ${escapeRoom(phone || '-')}</span>
-          <span>IP: ${escapeRoom(row.ip || 'sem IP')}</span>
-          <span>Sessao: ${escapeRoom(String(row.sessao_id || '').slice(0, 8) || '-')}</span>
-          <span>Entrou: ${escapeRoom(formatRoomDate(row.created_at))}</span>
-          <span>Espera: ${escapeRoom(formatRoomWait(row.created_at))}</span>
-        </div>
-        <div class="room-chat-box">
-          <div class="room-chat-messages" id="room-chat-${escapeRoom(row.id)}">
-            Carregando conversa...
+          <div class="room-conversation-meta">
+            <span>Telefone: ${escapeRoom(phone || '-')}</span>
+            <span>IP: ${escapeRoom(row.ip || 'sem IP')}</span>
+            <span>Sessao: ${escapeRoom(String(row.sessao_id || '').slice(0, 8) || '-')}</span>
+            <span>Entrou: ${escapeRoom(formatRoomDate(row.created_at))}</span>
           </div>
-          <form class="room-chat-form" onsubmit="sendRoomMessage(event, '${escapeRoom(row.id)}')">
-            <input
-              type="text"
-              maxlength="500"
-              autocomplete="off"
-              placeholder="Responder mensagem..."
-            />
-            <button type="submit">Enviar</button>
-          </form>
-        </div>
-        <div class="room-video-stage" id="room-video-${escapeRoom(row.id)}" hidden>
-          <div
-            class="room-video-frame"
-            data-room-video-frame
-            aria-label="Chamada de video com ${escapeRoom(row.username || 'usuario')}"
-          ></div>
-        </div>
-        <div class="virtual-room-actions">
-          <button
-            class="btn-primary"
-            type="button"
-            onclick="acceptIncomingCall('${escapeRoom(row.id)}')"
-            ${isCalling ? '' : 'disabled'}
-          >
-            Atender agora
-          </button>
-          <button
-            class="btn-secondary"
-            type="button"
-            onclick="startAdminVideoCall('${escapeRoom(row.id)}')"
-            ${canStartAdminCall ? '' : 'disabled'}
-          >
-            Ligar para usuario
-          </button>
-          <button
-            class="btn-secondary"
-            type="button"
-            onclick="openAdminVideoCall('${escapeRoom(row.id)}')"
-            ${canOpenVideo ? '' : 'disabled'}
-          >
-            Abrir chamada de video
-          </button>
-          <button
-            class="btn-secondary"
-            type="button"
-            onclick="finishPreviewCall('${escapeRoom(row.id)}')"
-            ${isReleased || isInCall ? '' : 'disabled'}
-          >
-            Finalizar
-          </button>
-          <button
-            class="btn-secondary"
-            type="button"
-            onclick="${isCalling ? 'declineIncomingCall' : 'cancelPreviewCall'}('${escapeRoom(row.id)}')"
-            ${isWaiting || isCalling ? '' : 'disabled'}
-          >
-            Cancelar
-          </button>
-        </div>
+        </button>
+        ${isOpen ? `
+          <div class="room-chat-expanded">
+            <div class="room-chat-box">
+              <div class="room-chat-messages" id="room-chat-${rowId}">
+                Carregando conversa...
+              </div>
+              <form class="room-chat-form" onsubmit="sendRoomMessage(event, '${rowId}')">
+                <input
+                  type="text"
+                  maxlength="500"
+                  autocomplete="off"
+                  placeholder="Responder mensagem..."
+                />
+                <button type="submit">Enviar</button>
+              </form>
+            </div>
+            <div class="room-video-stage" id="room-video-${rowId}" hidden>
+              <div
+                class="room-video-frame"
+                data-room-video-frame
+                aria-label="Chamada de video com ${escapeRoom(getRoomDisplayName(row))}"
+              ></div>
+            </div>
+            <div class="virtual-room-actions">
+              <button
+                class="btn-primary"
+                type="button"
+                onclick="acceptIncomingCall('${rowId}')"
+                ${isCalling ? '' : 'disabled'}
+              >
+                Atender agora
+              </button>
+              <button
+                class="btn-secondary"
+                type="button"
+                onclick="startAdminVideoCall('${rowId}')"
+                ${canStartAdminCall ? '' : 'disabled'}
+              >
+                Ligar para usuario
+              </button>
+              <button
+                class="btn-secondary"
+                type="button"
+                onclick="openAdminVideoCall('${rowId}')"
+                ${canOpenVideo ? '' : 'disabled'}
+              >
+                Abrir chamada de video
+              </button>
+              <button
+                class="btn-secondary"
+                type="button"
+                onclick="finishPreviewCall('${rowId}')"
+                ${isReleased || isInCall ? '' : 'disabled'}
+              >
+                Finalizar
+              </button>
+              <button
+                class="btn-secondary"
+                type="button"
+                onclick="${isCalling ? 'declineIncomingCall' : 'cancelPreviewCall'}('${rowId}')"
+                ${isWaiting || isCalling ? '' : 'disabled'}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        ` : ''}
       </article>
     `;
   }).join('');
 
   loadRoomMessagesForRows();
+}
+
+function toggleRoomChat(id) {
+  roomOpenChatId = roomOpenChatId === id ? '' : id;
+  roomRowsRenderKey = '';
+  renderRoomRows();
+
+  if (roomOpenChatId) {
+    markRoomChatRead(roomOpenChatId);
+  }
+}
+
+async function markRoomChatRead(id) {
+  if (!id || roomMarkingReadIds.has(id)) {
+    return;
+  }
+
+  const row = roomRows.find((item) => item.id === id);
+
+  if (!row) {
+    return;
+  }
+
+  const messages = roomMessagesById.get(id) || [];
+
+  if (!countRoomUnreadMessages(row, messages)) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const details = {
+    ...getRoomDetails(row),
+    admin_read_at: now
+  };
+
+  row.detalhes = details;
+  updateRoomUnreadBadge(row, 0);
+  roomMarkingReadIds.add(id);
+
+  const { error } = await _supa
+    .from(ROOM_TABLE)
+    .update({ detalhes: details })
+    .eq('id', id);
+
+  roomMarkingReadIds.delete(id);
+
+  if (error) {
+    console.warn('Nao consegui marcar conversa como lida:', error.message || error);
+  }
 }
 
 function renderRoomChatMessages(chamadaId, messages) {
@@ -755,6 +878,7 @@ async function loadRoomMessagesForRows() {
     }
 
     const messages = data || [];
+    roomMessagesById.set(row.id, messages);
 
     messages.forEach((message) => {
       if (message.autor_tipo !== 'usuario' || !message.id) {
@@ -768,7 +892,13 @@ async function loadRoomMessagesForRows() {
       roomKnownUserMessageIds.add(message.id);
     });
 
+    const unreadCount = countRoomUnreadMessages(row, messages);
+    updateRoomUnreadBadge(row, unreadCount);
     renderRoomChatMessages(row.id, messages);
+
+    if (row.id === roomOpenChatId && unreadCount > 0) {
+      markRoomChatRead(row.id);
+    }
   }));
 
   if (roomMessagesHydrated && newUserMessages.length) {
@@ -920,6 +1050,7 @@ async function sendRoomMessage(event, chamadaId) {
     return;
   }
 
+  await markRoomChatRead(chamadaId);
   loadRoomMessagesForRows();
 }
 

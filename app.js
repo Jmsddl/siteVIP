@@ -1946,6 +1946,13 @@ function isTemporaryPreviewSystemMessage(message) {
   ].some((pattern) => text.includes(pattern));
 }
 
+function getPreviewAdminReadAtMs() {
+  const readAt = getPreviewCallDetails(previewCallRecord).admin_read_at;
+  const time = readAt ? new Date(readAt).getTime() : 0;
+
+  return Number.isNaN(time) ? 0 : time;
+}
+
 function renderPreviewChatMessages(messages) {
   const container = document.getElementById('preview-chat-messages');
 
@@ -1953,44 +1960,20 @@ function renderPreviewChatMessages(messages) {
     return;
   }
 
-  const now = Date.now();
-  let nextTemporaryExpiry = 0;
-  const visibleMessages = messages.filter((message) => {
-    if (!isTemporaryPreviewSystemMessage(message)) {
-      return true;
-    }
-
-    const createdAt = message.created_at ? new Date(message.created_at).getTime() : now;
-    const expiresAt = Number.isNaN(createdAt)
-      ? now + PREVIEW_VISITOR_SYSTEM_TTL_MS
-      : createdAt + PREVIEW_VISITOR_SYSTEM_TTL_MS;
-    const visible = now <= expiresAt;
-
-    if (visible && (!nextTemporaryExpiry || expiresAt < nextTemporaryExpiry)) {
-      nextTemporaryExpiry = expiresAt;
-    }
-
-    return visible;
-  });
+  const visibleMessages = messages.filter((message) => message.autor_tipo !== 'sistema');
+  const adminReadAtMs = getPreviewAdminReadAtMs();
 
   if (previewChatTemporaryRenderTimer) {
     window.clearTimeout(previewChatTemporaryRenderTimer);
     previewChatTemporaryRenderTimer = null;
   }
 
-  if (nextTemporaryExpiry) {
-    previewChatTemporaryRenderTimer = window.setTimeout(() => {
-      previewChatTemporaryRenderTimer = null;
-      previewChatLastRenderKey = '';
-      renderPreviewChatMessages(messages);
-    }, Math.max(250, nextTemporaryExpiry - now + 80));
-  }
-
   const renderKey = JSON.stringify(visibleMessages.map((message) => [
     message.id,
     message.texto,
     message.autor_tipo,
-    message.created_at
+    message.created_at,
+    adminReadAtMs
   ]));
 
   if (renderKey === previewChatLastRenderKey) {
@@ -2010,23 +1993,21 @@ function renderPreviewChatMessages(messages) {
 
   container.innerHTML = visibleMessages.map((message) => {
     const mine = message.autor_tipo === 'usuario';
-    const system = message.autor_tipo === 'sistema';
     const time = message.created_at
       ? new Date(message.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
       : '';
-
-    if (system) {
-      return `
-        <div class="telegram-system-message">
-          ${escapeHtml(message.texto || '')}
-        </div>
-      `;
-    }
+    const createdAtMs = message.created_at ? new Date(message.created_at).getTime() : 0;
+    const wasRead = mine
+      && adminReadAtMs
+      && createdAtMs
+      && !Number.isNaN(createdAtMs)
+      && createdAtMs <= adminReadAtMs;
+    const meta = [time, wasRead ? 'Lida' : ''].filter(Boolean).join(' · ');
 
     return `
       <div class="telegram-message ${mine ? 'is-mine' : 'is-admin'}">
         <span>${escapeHtml(message.texto || '')}</span>
-        <small>${escapeHtml(time)}</small>
+        <small>${escapeHtml(meta)}</small>
       </div>
     `;
   }).join('');

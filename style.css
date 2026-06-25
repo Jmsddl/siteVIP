@@ -2789,7 +2789,8 @@ body.modal-open {
 }
 
 .virtual-room-card {
-  padding: 18px;
+  padding: 0;
+  overflow: hidden;
 }
 
 .virtual-room-card-head,
@@ -2836,6 +2837,11 @@ body.modal-open {
   color: #6dffb0;
 }
 
+.room-status-pill.is-finalizado {
+  background: rgba(255, 255, 255, 0.11);
+  color: rgba(255, 255, 255, 0.72);
+}
+
 @keyframes callPillPulse {
   from {
     box-shadow: 0 0 0 rgba(233, 30, 140, 0);
@@ -2850,6 +2856,80 @@ body.modal-open {
   flex-wrap: wrap;
   gap: 8px 14px;
   margin: 14px 0;
+}
+
+.room-conversation-summary {
+  width: 100%;
+  display: grid;
+  gap: 11px;
+  border: 0;
+  padding: 16px;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.room-conversation-summary:hover,
+.virtual-room-card.is-open .room-conversation-summary {
+  background: rgba(233, 30, 140, 0.08);
+}
+
+.room-conversation-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.room-conversation-main strong {
+  display: block;
+  color: #fff;
+  font-size: 1.05rem;
+}
+
+.room-conversation-main span {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.room-conversation-side {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.room-unread-badge {
+  border-radius: 999px;
+  padding: 6px 9px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  box-shadow: 0 0 18px rgba(233, 30, 140, 0.32);
+  font-size: 0.72rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.room-unread-badge[hidden] {
+  display: none !important;
+}
+
+.room-conversation-meta {
+  display: grid;
+  gap: 5px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.room-chat-expanded {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0 16px 16px;
 }
 
 .room-chat-box {
@@ -3228,6 +3308,16 @@ body.modal-open {
   .virtual-room-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .room-conversation-top,
+  .room-conversation-side {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .room-conversation-side {
+    width: 100%;
   }
 
   .virtual-room-actions button,
