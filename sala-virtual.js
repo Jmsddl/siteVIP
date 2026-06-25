@@ -771,27 +771,6 @@ function renderRoomSidePanel() {
       <span>Entrou: ${escapeRoom(formatRoomDate(row.created_at))}</span>
     </div>
     <div class="room-side-body">
-      <div class="room-chat-box">
-        <div class="room-chat-messages" id="room-chat-${rowId}">
-          Carregando conversa...
-        </div>
-        <form class="room-chat-form" onsubmit="sendRoomMessage(event, '${rowId}')">
-          <input
-            type="text"
-            maxlength="500"
-            autocomplete="off"
-            placeholder="Responder mensagem..."
-          />
-          <button type="submit">Enviar</button>
-        </form>
-      </div>
-      <div class="room-video-stage" id="room-video-${rowId}" hidden>
-        <div
-          class="room-video-frame"
-          data-room-video-frame
-          aria-label="Chamada de video com ${escapeRoom(getRoomDisplayName(row))}"
-        ></div>
-      </div>
       <div class="virtual-room-actions">
         <button
           class="btn-primary"
@@ -833,6 +812,27 @@ function renderRoomSidePanel() {
         >
           Cancelar
         </button>
+      </div>
+      <div class="room-chat-box">
+        <div class="room-chat-messages" id="room-chat-${rowId}">
+          Carregando conversa...
+        </div>
+        <form class="room-chat-form" onsubmit="sendRoomMessage(event, '${rowId}')">
+          <input
+            type="text"
+            maxlength="500"
+            autocomplete="off"
+            placeholder="Responder mensagem..."
+          />
+          <button type="submit">Enviar</button>
+        </form>
+      </div>
+      <div class="room-video-stage" id="room-video-${rowId}" hidden>
+        <div
+          class="room-video-frame"
+          data-room-video-frame
+          aria-label="Chamada de video com ${escapeRoom(getRoomDisplayName(row))}"
+        ></div>
       </div>
     </div>
   `;
@@ -892,8 +892,9 @@ function renderRoomChatMessages(chamadaId, messages) {
     message.texto,
     message.created_at
   ]));
+  const isPlaceholder = container.textContent.trim().includes('Carregando conversa');
 
-  if (roomChatRenderKeys.get(chamadaId) === renderKey) {
+  if (roomChatRenderKeys.get(chamadaId) === renderKey && !isPlaceholder) {
     return;
   }
 
