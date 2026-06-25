@@ -2687,16 +2687,16 @@ body.modal-open {
 }
 
 .virtual-room-shell {
-  width: min(1180px, calc(100vw - 28px));
+  width: min(1320px, calc(100vw - 24px));
   margin: 0 auto;
   padding: 28px 0 48px;
 }
 
 .virtual-room-workspace {
   display: grid;
-  grid-template-columns: minmax(300px, 420px) minmax(0, 1fr);
+  grid-template-columns: minmax(280px, 370px) minmax(0, 1fr);
   align-items: start;
-  gap: 16px;
+  gap: 14px;
 }
 
 .virtual-room-workspace:not(.has-open-chat) {
@@ -2706,7 +2706,7 @@ body.modal-open {
 .virtual-room-grid {
   display: grid;
   gap: 14px;
-  max-height: calc(100vh - 250px);
+  max-height: clamp(430px, calc(100dvh - 235px), 720px);
   overflow-y: auto;
   padding-right: 3px;
 }
@@ -2875,9 +2875,9 @@ body.modal-open {
 .room-conversation-summary {
   width: 100%;
   display: grid;
-  gap: 11px;
+  gap: 9px;
   border: 0;
-  padding: 16px;
+  padding: 14px;
   color: inherit;
   text-align: left;
   background: transparent;
@@ -2934,9 +2934,9 @@ body.modal-open {
 
 .room-conversation-meta {
   display: grid;
-  gap: 5px;
+  gap: 4px;
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   line-height: 1.35;
   word-break: break-word;
 }
@@ -2948,12 +2948,13 @@ body.modal-open {
 
 .room-side-panel {
   position: sticky;
-  top: 16px;
+  top: 12px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  min-height: min(680px, calc(100vh - 120px));
-  max-height: calc(100vh - 120px);
+  height: clamp(430px, calc(100dvh - 235px), 720px);
+  min-height: 0;
+  max-height: none;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 16px;
   background:
@@ -2972,7 +2973,7 @@ body.modal-open {
   align-items: center;
   gap: 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.09);
-  padding: 14px;
+  padding: 12px 14px;
   background: rgba(233, 30, 140, 0.1);
 }
 
@@ -3001,9 +3002,9 @@ body.modal-open {
 
 .room-side-meta {
   display: grid;
-  gap: 5px;
+  gap: 4px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 12px 14px;
+  padding: 10px 14px;
   color: var(--text-muted);
   font-size: 0.78rem;
   line-height: 1.35;
@@ -3011,15 +3012,26 @@ body.modal-open {
 }
 
 .room-side-body {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
-  display: grid;
-  align-content: start;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
   padding: 0 14px 14px;
 }
 
+.room-side-panel .room-chat-box {
+  flex: 1 1 320px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .room-side-panel .room-chat-messages {
-  max-height: min(42vh, 360px);
+  flex: 1 1 auto;
+  min-height: 190px;
+  max-height: none;
 }
 
 .room-chat-box {

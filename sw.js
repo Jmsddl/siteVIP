@@ -1,4 +1,4 @@
-﻿const CACHE_NAME = 'amanda-vip-v20260625-sim-call-v17';
+﻿const CACHE_NAME = 'amanda-vip-v20260625-sim-call-v19';
 const APP_SHELL = [
   './',
   './index.html',

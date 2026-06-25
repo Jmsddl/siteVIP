@@ -33,6 +33,7 @@ let roomJitsiApis = new Map();
 let roomOpenChatId = '';
 let roomMessagesById = new Map();
 let roomMarkingReadIds = new Set();
+let roomChatRenderKeys = new Map();
 
 function getRoomUser() {
   try {
@@ -313,7 +314,6 @@ async function mountRoomJitsiMeeting(id, rowOrId, displayName = 'Amanda') {
   }
 
   stage.hidden = false;
-  stage.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function setRoomStatus(message, isError = false) {
@@ -886,6 +886,19 @@ function renderRoomChatMessages(chamadaId, messages) {
     return;
   }
 
+  const renderKey = JSON.stringify(messages.map((message) => [
+    message.id,
+    message.autor_tipo,
+    message.texto,
+    message.created_at
+  ]));
+
+  if (roomChatRenderKeys.get(chamadaId) === renderKey) {
+    return;
+  }
+
+  roomChatRenderKeys.set(chamadaId, renderKey);
+
   if (!messages.length) {
     container.innerHTML = '<span class="room-chat-empty">Nenhuma mensagem ainda.</span>';
     return;
@@ -913,7 +926,6 @@ function renderRoomChatMessages(chamadaId, messages) {
       </div>
     `;
   }).join('');
-  container.scrollTop = container.scrollHeight;
 }
 
 async function loadRoomMessagesForRows() {

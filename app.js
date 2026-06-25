@@ -2042,7 +2042,6 @@ function renderPreviewChatMessages(messages) {
       </div>
     `;
   }).join('');
-  container.scrollTop = container.scrollHeight;
 }
 
 async function loadPreviewChatMessages() {
@@ -2672,7 +2671,6 @@ async function enterPreviewCall() {
   try {
     if (videoStage) {
       videoStage.hidden = false;
-      videoStage.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
     if (videoFrame) {
