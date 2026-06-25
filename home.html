@@ -9,7 +9,7 @@
 
   <link rel="manifest" href="manifest.webmanifest"/>
   <link rel="apple-touch-icon" href="icon-192.png"/>
-<link rel="stylesheet" href="style.css?v=20260622-sim-call-v11"/>
+<link rel="stylesheet" href="style.css?v=20260624-sim-call-v12"/>
 
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
@@ -21,14 +21,14 @@
   <!-- NAVBAR -->
 
   <nav class="navbar">
-    <span class="navbar-brand">âœ¨ Meu EspaÃ§o</span>
+    <span class="navbar-brand">✨ Meu Espaço</span>
     <div class="navbar-call-actions">
       <button
         class="btn-call-action"
         type="button"
         onclick="openPreviewCallRoom()"
       >
-        Fazer chamada previa agora
+        Fazer chamada prévia agora
       </button>
       <button
         class="btn-call-action is-primary"
@@ -45,7 +45,7 @@
       onclick="window.location.href='analytics.html'"
       hidden
     >
-      Analise
+      Análise
     </button>
     <button
       class="btn-analytics"
@@ -81,19 +81,19 @@
   aria-live="polite"
 >
   <span class="presence-dot"></span>
-  <strong id="profile-presence-text">Amanda esta offline</strong>
+  <strong id="profile-presence-text">Amanda está offline</strong>
 </div>
 
 <p class="profile-bio">
-  <strong>ðŸ”ž Bem-vindo ao meu paraÃ­so proibido - 21 anos de pura delÃ­cia!</strong>
+  <strong>🔞 Bem-vindo ao meu paraíso proibido - 21 anos de pura delícia!</strong>
 <br><br>
-Se vocÃª chegou atÃ© aqui, Ã© porque merece acessar o que mais tenho de melhor. ConteÃºdos que sÃ³ meus segredos mais especiais podem ver.
+Se você chegou até aqui, é porque merece acessar o que mais tenho de melhor. Conteúdos que só meus segredos mais especiais podem ver.
 
 Aqui eu sou completamente sua:
-â€¢ Galerias Ã­ntimas onde cada detalhe fica Ã  mostra
-â€¢ VÃ­deos exclusivos com meus brinquedos favoritos e sexo explÃ­cito.
-â€¢ Minhas fantasias mais secretas realizadas apenas para vocÃª
-â€¢ ConteÃºdo novo toda semana para nunca te deixar entediado
+• Galerias íntimas onde cada detalhe fica à mostra
+• Vídeos exclusivos com meus brinquedos favoritos e sexo explícito.
+• Minhas fantasias mais secretas realizadas apenas para você
+• Conteúdo novo toda semana para nunca te deixar entediado
   <br><br>
  
 </p>
@@ -104,7 +104,7 @@ Aqui eu sou completamente sua:
       0
     </span>
     <span class="stat-label">
-      VÃ­deos
+      Vídeos
     </span>
   </div>
 
@@ -122,7 +122,7 @@ Aqui eu sou completamente sua:
       0
     </span>
     <span class="stat-label">
-      ComentÃ¡rios
+      Comentários
     </span>
   </div>
 
@@ -138,7 +138,7 @@ Aqui eu sou completamente sua:
       class="tab active"
       onclick="switchTab('videos', this)"
     >
-      ðŸŽ¬ VÃ­deos
+      🎬 Vídeos
     </button>
 
 
@@ -146,20 +146,20 @@ Aqui eu sou completamente sua:
   class="tab"
   onclick="switchTab('fotos', this)"
 >
-  ðŸ“¸ Fotos
+  📸 Fotos
 </button>
 
 <button
   class="tab"
   onclick="switchTab('comentarios', this)"
 >
-  ðŸ’¬ ComentÃ¡rios
+  💬 Comentários
 </button>
 
 
   </div>
 
-  <!-- GRID VÃDEOS -->
+  <!-- GRID VÍDEOS -->
 
   <section class="content-section" id="tab-videos">
     <div
@@ -185,20 +185,20 @@ Aqui eu sou completamente sua:
     </div>
   </section>
 
-  <!-- COMENTÃRIOS -->
+  <!-- COMENTÁRIOS -->
 
   <section
     class="comments-section"
     id="tab-comentarios"
     style="display:none"
   >
-    <h2>ðŸ’¬ ComentÃ¡rios</h2>
+    <h2>💬 Comentários</h2>
 
 
 <div class="comment-form">
   <textarea
     id="comment-text"
-    placeholder="Deixe seu comentÃ¡rio..."
+    placeholder="Deixe seu comentário..."
   ></textarea>
 
   <button
@@ -219,7 +219,7 @@ Aqui eu sou completamente sua:
 
   </section>
 
-  <!-- MODAL VÃDEO -->
+  <!-- MODAL VÍDEO -->
 
   <div
     class="modal-overlay"
@@ -232,7 +232,7 @@ Aqui eu sou completamente sua:
       aria-label="Fechar player"
       onclick="closeVideoModal()"
     >
-      Ã—
+      ×
     </button>
     <div class="modal-box">
 
@@ -250,7 +250,7 @@ Aqui eu sou completamente sua:
       class="btn-close"
       onclick="closeVideoModal()"
     >
-      âœ• Fechar
+      × Fechar
     </button>
   </div>
 </div>
@@ -269,7 +269,7 @@ Aqui eu sou completamente sua:
       <button
         class="call-modal-close"
         type="button"
-        aria-label="Fechar chamada previa"
+        aria-label="Fechar chamada prévia"
         onclick="closePreviewCallRoom()"
       >
         x
@@ -279,7 +279,7 @@ Aqui eu sou completamente sua:
         <span>Chat ao vivo</span>
         <h2>Estamos abrindo o chat com Amanda</h2>
         <p>
-          Digite seu numero para liberar a conversa e recuperar o atendimento se mudar de internet.
+          Digite seu número para liberar a conversa e recuperar o atendimento se mudar de internet.
         </p>
         <form id="preview-phone-form">
           <input
@@ -291,7 +291,7 @@ Aqui eu sou completamente sua:
             placeholder="Seu WhatsApp com DDD"
           />
           <small id="preview-phone-error" hidden>
-            Digite um numero valido com DDD.
+            Digite um número válido com DDD.
           </small>
           <button class="btn-primary" type="submit">
             Liberar chat agora
@@ -318,7 +318,7 @@ Aqui eu sou completamente sua:
           <img src="sua-foto.jpg" alt="Amanda Oliveira" />
         </div>
         <strong>Chamando Amanda...</strong>
-        <p>Aguarde alguns segundos. A previa vai abrir sem audio.</p>
+        <p>Aguarde alguns segundos. A prévia vai abrir sem áudio.</p>
         <div class="telegram-call-ringing-actions">
           <button
             class="ring-answer-button"
@@ -400,14 +400,14 @@ Aqui eu sou completamente sua:
       <span class="call-modal-kicker">Chamada completa</span>
       <h2>Escolha o tempo da chamada</h2>
       <p>
-        Selecione uma opcao para liberar o checkout da chamada.
+        Selecione uma opção para liberar o checkout da chamada.
       </p>
       <select
         class="vip-plan-select"
         id="full-call-select"
         aria-label="Escolha o tempo da chamada completa"
       >
-        <option value="">Selecione uma opcao</option>
+        <option value="">Selecione uma opção</option>
         <option value="5_min">Chamada 5 minutos</option>
         <option value="10_min">Chamada 10 minutos</option>
       </select>
@@ -484,9 +484,9 @@ Aqui eu sou completamente sua:
 
   <script src="auth.js?v=20260617-analytics"></script>
 
-  <script src="app.js?v=20260622-sim-call-v11"></script>
+  <script src="app.js?v=20260624-sim-call-v12"></script>
 
-  <script src="pwa.js?v=20260622-sim-call-v11"></script>
+  <script src="pwa.js?v=20260624-sim-call-v12"></script>
 
 </body>
 </html>

@@ -57,7 +57,7 @@ const DEFAULT_VIP_OFFERS = [
   },
   {
     titulo: 'MANDA UM MIMO',
-    descricao: 'Em troca de um video meu',
+    descricao: 'Em troca de um vídeo meu',
     valor: 'R$ 10,00',
     destaque: false
   }
@@ -103,7 +103,7 @@ const PREVIEW_PHONE_STORAGE_KEY = 'amanda_preview_phone';
 const PREVIEW_PHONE_IP_STORAGE_KEY = 'amanda_preview_phone_ip';
 const PREVIEW_FORCE_FINISH_STORAGE_KEY = 'amanda_preview_force_finish_call';
 const PREVIEW_FINISHED_MESSAGE = 'Voce ja participou, agora pague a chamada completa.';
-const PREVIEW_CONNECT_DELAY_MS = 2400;
+const PREVIEW_CONNECT_DELAY_MS = 6000;
 const PREVIEW_VISITOR_SYSTEM_TTL_MS = 9000;
 const PRESENCE_TABLE = 'sala_status';
 const PRESENCE_KEY = 'amanda';
@@ -946,7 +946,7 @@ async function requestPreviewCameraStream(facingMode = previewCameraFacingMode, 
 
     return previewCameraStream;
   } catch (error) {
-    console.warn('Camera local nao liberada para chamada previa:', error.message || error);
+    console.warn('Câmera local não liberada para chamada prévia:', error.message || error);
     if (!options.silent) {
       trackEvent('bloqueou_camera_chamada_previa', {
         alvo_tipo: 'chamada_previa',
@@ -980,8 +980,8 @@ function togglePreviewCamera() {
   registerPreviewCameraState(
     previewCameraEnabled ? 'ligada' : 'desligada',
     previewCameraEnabled
-      ? 'Visitante ligou a camera durante a chamada previa.'
-      : 'Visitante desligou a camera durante a chamada previa.'
+      ? 'Visitante ligou a câmera durante a chamada prévia.'
+      : 'Visitante desligou a câmera durante a chamada prévia.'
   );
   trackEvent(previewCameraEnabled ? 'ligou_camera_chamada_previa' : 'desligou_camera_chamada_previa', {
     alvo_tipo: 'chamada_previa',
@@ -1027,21 +1027,21 @@ function renderSimulatedPreviewFallback(container) {
     <div class="sim-call-fallback">
       <img src="sua-foto.jpg" alt="Amanda Oliveira" />
       <strong>Amanda conectada</strong>
-      <span>Previa sem audio em andamento</span>
+      <span>Prévia sem áudio em andamento</span>
     </div>
   `;
 }
 
 function getPreviewFinishSystemMessage(reason) {
   if (reason === 'saiu_da_aba' || reason === 'saiu_da_pagina') {
-    return 'Chamada previa encerrada porque a tela saiu da chamada.';
+    return 'Chamada prévia encerrada porque a tela saiu da chamada.';
   }
 
   if (reason === 'usuario_encerrou') {
-    return 'Chamada previa encerrada pelo visitante.';
+    return 'Chamada prévia encerrada pelo visitante.';
   }
 
-  return 'Chamada previa encerrada automaticamente.';
+  return 'Chamada prévia encerrada automaticamente.';
 }
 
 function isActiveSimulatedPreviewCall() {
@@ -1191,7 +1191,7 @@ async function finishSimulatedPreviewCall(reason = 'tempo_esgotado') {
     alvo_titulo: 'Previa simulada finalizada'
   });
 
-  setPreviewChatStatus('Chamada previa finalizada');
+  setPreviewChatStatus('Chamada prévia finalizada');
   loadPreviewChatMessages();
   applyPreviewCallStatus(previewCallRecord);
 }
@@ -1235,7 +1235,7 @@ async function mountSimulatedPreviewCall(container, record) {
       </div>
       <div class="sim-call-preconnect" data-sim-preconnect>
         <strong>Amanda Oliveira</strong>
-        <span>Trocando chaves criptograficas <i></i></span>
+        <span>Trocando chaves criptográficas <i></i></span>
       </div>
       <div class="sim-call-top">
         <div class="sim-call-emojis" aria-hidden="true">😱 🍕 🐙 🇫🇷</div>
@@ -1285,13 +1285,13 @@ async function mountSimulatedPreviewCall(container, record) {
     localVideo.play?.().catch(() => {});
     registerPreviewCameraState(
       'ligada',
-      'Camera do visitante entrou ligada na chamada previa.'
+      'Câmera do visitante entrou ligada na chamada prévia.'
     );
   } else if (blocked) {
     blocked.hidden = false;
     registerPreviewCameraState(
       'desligada_ou_bloqueada',
-      'Camera do visitante entrou desligada ou nao foi permitida.'
+      'Câmera do visitante entrou desligada ou não foi permitida.'
     );
   }
 
@@ -1399,7 +1399,7 @@ function disposePreviewJitsi() {
   try {
     api.dispose();
   } catch (error) {
-    console.warn('Nao consegui fechar a chamada de video:', error);
+    console.warn('Não consegui fechar a chamada de vídeo:', error);
   }
 }
 
@@ -1761,18 +1761,18 @@ function handlePreviewJitsiClosed() {
 
 function attachPreviewJitsiListeners(api) {
   api.addListener('videoConferenceJoined', () => {
-    setPreviewChatStatus('Chamada de video conectada');
+    setPreviewChatStatus('Chamada de vídeo conectada');
   });
   api.addListener('videoConferenceLeft', handlePreviewJitsiClosed);
   api.addListener('readyToClose', handlePreviewJitsiClosed);
   api.addListener('cameraError', () => {
-    setPreviewChatStatus('Permita o acesso a camera e tente novamente');
+    setPreviewChatStatus('Permita o acesso à câmera e tente novamente');
   });
   api.addListener('micError', () => {
     setPreviewChatStatus('Permita o acesso ao microfone e tente novamente');
   });
   api.addListener('peerConnectionFailure', () => {
-    setPreviewChatStatus('Conexao instavel. Feche e toque em atender novamente.');
+    setPreviewChatStatus('Conexão instável. Feche e toque em atender novamente.');
   });
 }
 
@@ -1854,7 +1854,7 @@ function renderPreviewChatMessages(messages) {
   if (!visibleMessages.length) {
     container.innerHTML = `
       <div class="telegram-empty">
-        Mande uma mensagem para Amanda ou chame por chamada de video.
+        Mande uma mensagem para Amanda ou chame por chamada de vídeo.
       </div>
     `;
     return;
@@ -1935,8 +1935,8 @@ async function sendPreviewChatMessage(text, authorType = 'usuario') {
 function showPreviewCallMissed() {
   previewAutoJoinPending = false;
   stopPreviewRinging();
-  setPreviewChatStatus('Amanda nao atendeu, tente mais tarde');
-  setPreviewCallEnterEnabled(false, 'Chamada de video indisponivel');
+  setPreviewChatStatus('Amanda não atendeu, tente mais tarde');
+  setPreviewCallEnterEnabled(false, 'Chamada de vídeo indisponível');
 
   const button = document.getElementById('preview-call-request');
 
@@ -2026,7 +2026,7 @@ function startPreviewRingingTimeout() {
         chamada_id: previewCallRecord.id,
         autor_tipo: 'sistema',
         autor_nome: 'Sistema',
-        texto: 'Amanda nao atendeu a chamada de video. Tente novamente mais tarde.'
+        texto: 'Amanda não atendeu a chamada de vídeo. Tente novamente mais tarde.'
       });
 
     showPreviewCallMissed();
@@ -2041,7 +2041,7 @@ async function requestPreviewVideoCall() {
   }
 
   if (previewCallRecord.status === 'finalizado') {
-    setPreviewChatStatus('Chamada previa finalizada');
+    setPreviewChatStatus('Chamada prévia finalizada');
     showPreviewCompleteShortcut(true);
     return;
   }
@@ -2077,7 +2077,9 @@ async function requestPreviewVideoCall() {
   setPreviewChatStatus('Chamando Amanda...');
   setPreviewRingingContent(
     'Chamando Amanda...',
-    'Aguarde alguns segundos. Amanda esta recebendo sua chamada previa.'
+    amandaPresenceOnline
+      ? 'Aguarde alguns segundos. Amanda está recebendo sua chamada prévia.'
+      : 'Amanda está offline agora. Se ela não atender, a chamada encerra sozinha.'
   );
   setPreviewRingingActions({ answer: false, decline: true });
   setPreviewRingingVisible(true);
@@ -2103,17 +2105,21 @@ async function requestPreviewVideoCall() {
       chamada_id: previewCallRecord.id,
       autor_tipo: 'sistema',
       autor_nome: 'Sistema',
-      texto: 'Usuario iniciou uma chamada previa.'
+      texto: 'Usuário iniciou uma chamada prévia.'
     });
 
   trackEvent('solicitou_videochamada_previa', {
     alvo_tipo: 'chat_chamada',
     alvo_titulo: 'Iniciou chamada previa simulada'
   });
-  previewCallRingTimer = window.setTimeout(() => {
-    previewCallRingTimer = null;
-    enterPreviewCall();
-  }, PREVIEW_SIMULATED_RING_MS);
+  if (amandaPresenceOnline) {
+    previewCallRingTimer = window.setTimeout(() => {
+      previewCallRingTimer = null;
+      enterPreviewCall();
+    }, PREVIEW_SIMULATED_RING_MS);
+  } else {
+    startPreviewRingingTimeout();
+  }
   loadPreviewChatMessages();
 }
 
@@ -2137,7 +2143,7 @@ async function ensurePreviewWelcomeMessage(record) {
       chamada_id: record.id,
       autor_tipo: 'sistema',
       autor_nome: 'Sistema',
-      texto: `Conversa iniciada. Amanda esta ${amandaPresenceOnline ? 'online' : 'offline'}. Amanda foi notificada e respondera por aqui.`
+      texto: `Conversa iniciada. Amanda está ${amandaPresenceOnline ? 'online' : 'offline'}. Amanda foi notificada e responderá por aqui.`
     });
 }
 
@@ -2193,23 +2199,23 @@ function applyPreviewCallStatus(record) {
 
     if (incomingAdminCall) {
       setPreviewRingingContent(
-        'Amanda esta ligando para voce...',
+        'Amanda está ligando para você...',
         'Toque em Atender chamada para entrar direto na videochamada.'
       );
       setPreviewRingingActions({ answer: true, decline: true });
       setPreviewRingingVisible(true);
       notifyPreviewIncomingCall(record);
-      setPreviewChatStatus('Amanda esta te chamando agora');
+      setPreviewChatStatus('Amanda está te chamando agora');
     } else {
       stopPreviewRinging();
       setPreviewChatStatus(record.status === 'em_chamada'
-        ? 'Chamada de video em andamento'
+        ? 'Chamada de vídeo em andamento'
         : 'Amanda atendeu. Toque para entrar na chamada.');
     }
-    setPreviewCallEnterEnabled(false, 'Chamada de video liberada');
+    setPreviewCallEnterEnabled(false, 'Chamada de vídeo liberada');
     if (requestButton) {
       requestButton.disabled = false;
-      requestButton.textContent = incomingAdminCall ? 'Atender chamada' : 'Entrar na chamada de video';
+      requestButton.textContent = incomingAdminCall ? 'Atender chamada' : 'Entrar na chamada de vídeo';
       requestButton.classList.add('is-ready', 'is-call-action');
       requestButton.classList.toggle('is-answer-action', incomingAdminCall);
     }
@@ -2219,13 +2225,16 @@ function applyPreviewCallStatus(record) {
 
   if (record.status === 'chamando') {
     const isSimulatedCall = Boolean(getPreviewCallDetails(record).simulated_call);
+    const simulatedMessage = amandaPresenceOnline
+      ? 'Aguarde alguns segundos. Amanda está recebendo sua chamada prévia.'
+      : 'Amanda está offline agora. Se ela não atender, a chamada encerra sozinha.';
 
     previewIncomingCallKey = '';
     setPreviewRingingContent(
       'Chamando Amanda...',
       isSimulatedCall
-        ? 'Aguarde alguns segundos. Amanda esta recebendo sua chamada previa.'
-        : 'Aguarde ela atender sua chamada de video.'
+        ? simulatedMessage
+        : 'Aguarde ela atender sua chamada de vídeo.'
     );
     setPreviewRingingActions({ answer: false, decline: true });
     setPreviewChatStatus('Chamando Amanda...');
@@ -2238,7 +2247,12 @@ function applyPreviewCallStatus(record) {
       requestButton.classList.remove('is-answer-action');
     }
 
-    if (!isSimulatedCall) {
+    if (isSimulatedCall && amandaPresenceOnline && previewAutoJoinPending && !previewCallRingTimer) {
+      previewCallRingTimer = window.setTimeout(() => {
+        previewCallRingTimer = null;
+        enterPreviewCall();
+      }, PREVIEW_SIMULATED_RING_MS);
+    } else if (!isSimulatedCall || !amandaPresenceOnline) {
       startPreviewRingingTimeout();
     }
 
@@ -2262,8 +2276,8 @@ function applyPreviewCallStatus(record) {
       videoStage.hidden = true;
     }
 
-    setPreviewChatStatus('Chamada previa finalizada');
-    setPreviewCallEnterEnabled(false, 'Chamada previa usada');
+    setPreviewChatStatus('Chamada prévia finalizada');
+    setPreviewCallEnterEnabled(false, 'Chamada prévia usada');
     if (requestButton) {
       requestButton.disabled = true;
       requestButton.textContent = 'Chamada finalizada';
@@ -2294,7 +2308,7 @@ function applyPreviewCallStatus(record) {
 
   stopPreviewRinging();
   previewIncomingCallKey = '';
-  setPreviewChatStatus(amandaPresenceOnline ? 'Amanda esta online' : 'Amanda esta offline');
+  setPreviewChatStatus(amandaPresenceOnline ? 'Amanda está online' : 'Amanda está offline');
   setPreviewCallEnterEnabled(false, 'Chamada de video');
   if (requestButton) {
     requestButton.disabled = false;
@@ -2426,8 +2440,8 @@ async function openPreviewCallRoom() {
     startPreviewCallPolling();
     startPreviewChatPolling();
   } catch (error) {
-    console.error('Erro ao abrir chamada previa:', error);
-    setPreviewChatStatus('Nao consegui abrir a conversa');
+    console.error('Erro ao abrir chamada prévia:', error);
+    setPreviewChatStatus('Não consegui abrir a conversa');
     setPreviewCallEnterEnabled(false, 'Indisponivel');
   }
 }
@@ -2462,7 +2476,7 @@ function closePreviewCallRoom() {
 
   if (shouldFinishSimulated) {
     finishSimulatedPreviewCall('usuario_fechou').catch((error) => {
-      console.warn('Nao consegui finalizar previa simulada ao fechar:', error.message || error);
+      console.warn('Não consegui finalizar prévia simulada ao fechar:', error.message || error);
     });
   }
 
@@ -2480,7 +2494,7 @@ async function enterPreviewCall() {
   const now = new Date().toISOString();
   const analyticsPromise = trackEvent('clicou_entrar_chamada_previa', {
     alvo_tipo: 'chamada_previa',
-    alvo_titulo: 'Entrou na chamada previa simulada',
+    alvo_titulo: 'Entrou na chamada prévia simulada',
     alvo_url: videoUrl
   });
 
@@ -2494,12 +2508,12 @@ async function enterPreviewCall() {
     }
 
     if (videoFrame) {
-      setPreviewChatStatus('Trocando chaves criptograficas...');
+      setPreviewChatStatus('Trocando chaves criptográficas...');
       await mountSimulatedPreviewCall(videoFrame, previewCallRecord);
     }
   } catch (error) {
-    console.warn('Nao consegui abrir chamada previa simulada:', error.message || error);
-    setPreviewChatStatus(error.message || 'Nao consegui abrir a chamada previa.');
+    console.warn('Não consegui abrir chamada prévia simulada:', error.message || error);
+    setPreviewChatStatus(error.message || 'Não consegui abrir a chamada prévia.');
     if (videoStage) {
       videoStage.hidden = true;
     }
@@ -2668,7 +2682,7 @@ function setAmandaPresence(isOnline) {
 
   wrapper.classList.toggle('is-online', amandaPresenceOnline);
   wrapper.classList.toggle('is-offline', !amandaPresenceOnline);
-  text.textContent = amandaPresenceOnline ? 'Amanda esta online' : 'Amanda esta offline';
+  text.textContent = amandaPresenceOnline ? 'Amanda está online' : 'Amanda está offline';
 }
 
 async function refreshAmandaPresence() {
@@ -3029,7 +3043,7 @@ async function loadContent() {
       console.error('Erro ao carregar conteudo:', error);
       document.getElementById('count-videos').textContent = '0';
       document.getElementById('count-fotos').textContent = '0';
-      renderGridMessage('videos-grid', 'Nao consegui carregar os videos agora.');
+      renderGridMessage('videos-grid', 'Não consegui carregar os vídeos agora.');
       renderGridMessage('fotos-grid', 'Nao consegui carregar as fotos agora.');
       return;
     }
@@ -3063,7 +3077,7 @@ async function loadContent() {
     console.error('Falha ao carregar conteudo:', error);
     document.getElementById('count-videos').textContent = '0';
     document.getElementById('count-fotos').textContent = '0';
-    renderGridMessage('videos-grid', 'Erro ao carregar videos.');
+    renderGridMessage('videos-grid', 'Erro ao carregar vídeos.');
     renderGridMessage('fotos-grid', 'Erro ao carregar fotos.');
   } finally {
     loadComments();
@@ -3075,7 +3089,7 @@ function renderVideos(videos) {
   grid.innerHTML = '';
 
   if (!videos.length) {
-    renderGridMessage('videos-grid', 'Nenhum video disponivel no momento.');
+    renderGridMessage('videos-grid', 'Nenhum vídeo disponível no momento.');
     return;
   }
 
@@ -3180,7 +3194,7 @@ function renderFotos(fotos, options = {}) {
     renderGridMessage(
       'fotos-grid',
       previewMode
-        ? 'Nenhuma previa disponivel no momento.'
+        ? 'Nenhuma prévia disponível no momento.'
         : 'Nenhuma foto disponivel no momento.'
     );
     return;
@@ -3206,7 +3220,7 @@ function renderFotos(fotos, options = {}) {
           <img
             src="${escapeHtml(thumbUrl)}"
             data-fallbacks="${encodeImageFallbacks(fallbackUrls)}"
-            alt="${escapeHtml(foto.titulo || 'Foto de previa')}"
+            alt="${escapeHtml(foto.titulo || 'Foto de prévia')}"
             loading="lazy"
             onerror="loadNextImageSource(this);"
           >
@@ -3513,7 +3527,7 @@ function applyVideoStartTime(videoElement, startTime) {
         seekToStartTime();
       }, 180);
     } catch (error) {
-      console.warn('Nao foi possivel ajustar o inicio do video:', error);
+      console.warn('Não foi possível ajustar o início do vídeo:', error);
 
       if (attempts < maxAttempts) {
         window.setTimeout(seekToStartTime, 220);
@@ -3764,7 +3778,7 @@ async function requestElementFullscreen(element) {
   try {
     await requestFullscreen.call(element);
   } catch (error) {
-    console.warn('Nao foi possivel ativar fullscreen:', error);
+    console.warn('Não foi possível ativar fullscreen:', error);
   }
 }
 
@@ -3781,7 +3795,7 @@ async function exitElementFullscreen() {
   try {
     await exitFullscreen.call(document);
   } catch (error) {
-    console.warn('Nao foi possivel sair do fullscreen:', error);
+    console.warn('Não foi possível sair do fullscreen:', error);
   }
 }
 
@@ -3879,7 +3893,7 @@ function openVideo(url, titulo) {
     setupModalQualitySelect(player, modalVideo, qualityOptions, startTime);
     setupDemoVideoLock(modalVideo, startTime);
   } else {
-    alert('Link do video invalido');
+    alert('Link do vídeo inválido');
     return;
   }
 
@@ -3928,7 +3942,7 @@ async function loadComments() {
     counter.textContent = '0';
     list.innerHTML = `
       <div class="comment-empty">
-        Nao consegui carregar os comentarios agora.
+        Não consegui carregar os comentários agora.
       </div>
     `;
     return;
@@ -3941,7 +3955,7 @@ async function loadComments() {
   if (!comments.length) {
     list.innerHTML = `
       <div class="comment-empty">
-        Ainda nao tem comentarios. Seja o primeiro a comentar.
+        Ainda não tem comentários. Seja o primeiro a comentar.
       </div>
     `;
     return;
@@ -4020,7 +4034,7 @@ async function postComment() {
 
   if (error) {
     console.error('Erro ao enviar comentario:', error);
-    alert('Nao consegui enviar o comentario agora.');
+    alert('Não consegui enviar o comentário agora.');
     return;
   }
 
