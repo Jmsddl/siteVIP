@@ -572,6 +572,7 @@ function renderRoomRows() {
   const renderKey = JSON.stringify(roomRows.map((row) => [
     row.id,
     row.status,
+    row.telefone,
     row.updated_at,
     row.meet_url
   ]));
@@ -601,6 +602,8 @@ function renderRoomRows() {
     const canOpenVideo = isReleased || isInCall;
     const canStartAdminCall = isWaiting || isFinished;
     const loginUsername = getRoomLoginUsername(row);
+    const details = getRoomDetails(row);
+    const phone = row.telefone || details.telefone || '';
     const planLine = loginUsername
       ? `${row.plano || '-'} - login ${loginUsername}`
       : (row.plano || '-');
@@ -617,6 +620,7 @@ function renderRoomRows() {
           </b>
         </div>
         <div class="virtual-room-meta">
+          <span>Telefone: ${escapeRoom(phone || '-')}</span>
           <span>IP: ${escapeRoom(row.ip || 'sem IP')}</span>
           <span>Sessao: ${escapeRoom(String(row.sessao_id || '').slice(0, 8) || '-')}</span>
           <span>Entrou: ${escapeRoom(formatRoomDate(row.created_at))}</span>

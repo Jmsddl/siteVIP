@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 
 <html lang="pt-BR">
 <head>
@@ -9,7 +9,7 @@
 
   <link rel="manifest" href="manifest.webmanifest"/>
   <link rel="apple-touch-icon" href="icon-192.png"/>
-<link rel="stylesheet" href="style.css?v=20260622-sim-call-v9"/>
+<link rel="stylesheet" href="style.css?v=20260622-sim-call-v11"/>
 
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
@@ -21,7 +21,7 @@
   <!-- NAVBAR -->
 
   <nav class="navbar">
-    <span class="navbar-brand">✨ Meu Espaço</span>
+    <span class="navbar-brand">âœ¨ Meu EspaÃ§o</span>
     <div class="navbar-call-actions">
       <button
         class="btn-call-action"
@@ -85,15 +85,15 @@
 </div>
 
 <p class="profile-bio">
-  <strong>🔞 Bem-vindo ao meu paraíso proibido - 21 anos de pura delícia!</strong>
+  <strong>ðŸ”ž Bem-vindo ao meu paraÃ­so proibido - 21 anos de pura delÃ­cia!</strong>
 <br><br>
-Se você chegou até aqui, é porque merece acessar o que mais tenho de melhor. Conteúdos que só meus segredos mais especiais podem ver.
+Se vocÃª chegou atÃ© aqui, Ã© porque merece acessar o que mais tenho de melhor. ConteÃºdos que sÃ³ meus segredos mais especiais podem ver.
 
 Aqui eu sou completamente sua:
-• Galerias íntimas onde cada detalhe fica à mostra
-• Vídeos exclusivos com meus brinquedos favoritos e sexo explícito.
-• Minhas fantasias mais secretas realizadas apenas para você
-• Conteúdo novo toda semana para nunca te deixar entediado
+â€¢ Galerias Ã­ntimas onde cada detalhe fica Ã  mostra
+â€¢ VÃ­deos exclusivos com meus brinquedos favoritos e sexo explÃ­cito.
+â€¢ Minhas fantasias mais secretas realizadas apenas para vocÃª
+â€¢ ConteÃºdo novo toda semana para nunca te deixar entediado
   <br><br>
  
 </p>
@@ -104,7 +104,7 @@ Aqui eu sou completamente sua:
       0
     </span>
     <span class="stat-label">
-      Vídeos
+      VÃ­deos
     </span>
   </div>
 
@@ -122,7 +122,7 @@ Aqui eu sou completamente sua:
       0
     </span>
     <span class="stat-label">
-      Comentários
+      ComentÃ¡rios
     </span>
   </div>
 
@@ -138,7 +138,7 @@ Aqui eu sou completamente sua:
       class="tab active"
       onclick="switchTab('videos', this)"
     >
-      🎬 Vídeos
+      ðŸŽ¬ VÃ­deos
     </button>
 
 
@@ -146,20 +146,20 @@ Aqui eu sou completamente sua:
   class="tab"
   onclick="switchTab('fotos', this)"
 >
-  📸 Fotos
+  ðŸ“¸ Fotos
 </button>
 
 <button
   class="tab"
   onclick="switchTab('comentarios', this)"
 >
-  💬 Comentários
+  ðŸ’¬ ComentÃ¡rios
 </button>
 
 
   </div>
 
-  <!-- GRID VÍDEOS -->
+  <!-- GRID VÃDEOS -->
 
   <section class="content-section" id="tab-videos">
     <div
@@ -185,20 +185,20 @@ Aqui eu sou completamente sua:
     </div>
   </section>
 
-  <!-- COMENTÁRIOS -->
+  <!-- COMENTÃRIOS -->
 
   <section
     class="comments-section"
     id="tab-comentarios"
     style="display:none"
   >
-    <h2>💬 Comentários</h2>
+    <h2>ðŸ’¬ ComentÃ¡rios</h2>
 
 
 <div class="comment-form">
   <textarea
     id="comment-text"
-    placeholder="Deixe seu comentário..."
+    placeholder="Deixe seu comentÃ¡rio..."
   ></textarea>
 
   <button
@@ -219,7 +219,7 @@ Aqui eu sou completamente sua:
 
   </section>
 
-  <!-- MODAL VÍDEO -->
+  <!-- MODAL VÃDEO -->
 
   <div
     class="modal-overlay"
@@ -232,7 +232,7 @@ Aqui eu sou completamente sua:
       aria-label="Fechar player"
       onclick="closeVideoModal()"
     >
-      ×
+      Ã—
     </button>
     <div class="modal-box">
 
@@ -250,7 +250,7 @@ Aqui eu sou completamente sua:
       class="btn-close"
       onclick="closeVideoModal()"
     >
-      ✕ Fechar
+      âœ• Fechar
     </button>
   </div>
 </div>
@@ -274,6 +274,30 @@ Aqui eu sou completamente sua:
       >
         x
       </button>
+      <div class="preview-phone-gate" id="preview-phone-gate" hidden>
+        <img src="sua-foto.jpg" alt="Amanda Oliveira" />
+        <span>Chat ao vivo</span>
+        <h2>Estamos abrindo o chat com Amanda</h2>
+        <p>
+          Digite seu numero para liberar a conversa e recuperar o atendimento se mudar de internet.
+        </p>
+        <form id="preview-phone-form">
+          <input
+            id="preview-phone-input"
+            type="tel"
+            inputmode="tel"
+            autocomplete="tel"
+            maxlength="20"
+            placeholder="Seu WhatsApp com DDD"
+          />
+          <small id="preview-phone-error" hidden>
+            Digite um numero valido com DDD.
+          </small>
+          <button class="btn-primary" type="submit">
+            Liberar chat agora
+          </button>
+        </form>
+      </div>
       <div class="telegram-chat-header">
         <img src="sua-foto.jpg" alt="Amanda" />
         <div>
@@ -426,7 +450,7 @@ Aqui eu sou completamente sua:
       aria-hidden="true"
     >
       <span>Clique no X para fechar</span>
-      <b>➜</b>
+      <b>âžœ</b>
     </div>
 
     <div class="floating-offer-list" id="floating-offer-list"></div>
@@ -460,9 +484,9 @@ Aqui eu sou completamente sua:
 
   <script src="auth.js?v=20260617-analytics"></script>
 
-  <script src="app.js?v=20260622-sim-call-v9"></script>
+  <script src="app.js?v=20260622-sim-call-v11"></script>
 
-  <script src="pwa.js?v=20260622-sim-call-v9"></script>
+  <script src="pwa.js?v=20260622-sim-call-v11"></script>
 
 </body>
 </html>

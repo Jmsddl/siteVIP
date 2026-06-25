@@ -40,11 +40,19 @@ to anon, authenticated
 using (true)
 with check (true);
 
--- Ajuste do IP de teste: 177.10.146.100 pode finalizar varias chamadas previas.
--- Isso substitui somente o indice de bloqueio por IP finalizado, sem apagar linhas.
-drop index if exists public.chamadas_previas_ip_finalizado_idx;
+-- Ajuste da chamada previa: bloqueio por telefone, mantendo o IP 177.10.146.100 livre para testes.
+alter table public.chamadas_previas
+add column if not exists telefone text;
 
-create unique index if not exists chamadas_previas_ip_finalizado_idx
-  on public.chamadas_previas (ip)
+drop index if exists public.chamadas_previas_ip_finalizado_idx;
+drop index if exists public.chamadas_previas_telefone_finalizado_idx;
+
+create unique index if not exists chamadas_previas_telefone_finalizado_idx
+  on public.chamadas_previas (telefone)
   where status = 'finalizado'
+    and telefone is not null
+    and telefone <> ''
     and ip <> '177.10.146.100';
+
+create index if not exists chamadas_previas_telefone_updated_idx
+  on public.chamadas_previas (telefone, updated_at desc);
