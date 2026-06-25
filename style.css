@@ -1807,87 +1807,68 @@ body.modal-open {
 }
 
 .sim-call-control b {
-  width: 62px;
-  height: 62px;
+  width: 64px;
+  height: 64px;
   display: grid;
   place-items: center;
   position: relative;
   overflow: hidden;
   border-radius: 999px;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.88);
   color: #111;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.97), rgba(238, 238, 238, 0.82));
+  border: 1px solid rgba(255, 255, 255, 0.74);
   font-size: 0;
   font-weight: 900;
-  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.26);
+  box-shadow:
+    0 16px 32px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  transition: transform 0.16s ease, background 0.18s ease, color 0.18s ease;
+}
+
+.sim-call-control:active b {
+  transform: scale(0.94);
+}
+
+.sim-call-control b svg {
+  width: 31px;
+  height: 31px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
 }
 
 .sim-call-control.is-muted b {
-  background: rgba(255, 255, 255, 0.28);
+  background: rgba(18, 18, 18, 0.62);
+  border-color: rgba(255, 255, 255, 0.2);
   color: #fff;
+  backdrop-filter: blur(10px);
 }
 
 .sim-call-control.is-end b {
-  background: #ff2346;
+  background: linear-gradient(135deg, #ff315f, #f00035);
+  border-color: rgba(255, 255, 255, 0.18);
   color: #fff;
 }
 
 .sim-call-control b::before,
 .sim-call-control b::after {
-  content: "";
-  position: absolute;
-}
-
-[data-sim-flip-camera] b::before {
-  width: 29px;
-  height: 29px;
-  border: 4px solid currentColor;
-  border-left-color: transparent;
-  border-radius: 999px;
-}
-
-[data-sim-flip-camera] b::after {
-  top: 15px;
-  right: 15px;
-  border-top: 6px solid transparent;
-  border-bottom: 6px solid transparent;
-  border-left: 8px solid currentColor;
-  transform: rotate(-28deg);
-}
-
-[data-sim-toggle-camera] b::before {
-  width: 34px;
-  height: 24px;
-  border-radius: 7px;
-  background: currentColor;
-  clip-path: polygon(0 0, 70% 0, 70% 30%, 100% 12%, 100% 88%, 70% 70%, 70% 100%, 0 100%);
-}
-
-[data-sim-toggle-mic] b::before {
-  width: 18px;
-  height: 30px;
-  border-radius: 999px;
-  background: currentColor;
-  box-shadow: 0 22px 0 -7px currentColor;
+  content: none;
 }
 
 [data-sim-toggle-camera].is-muted b::after,
 [data-sim-toggle-mic].is-muted b::after {
+  content: "";
+  position: absolute;
   width: 44px;
-  height: 5px;
+  height: 4px;
   border-radius: 999px;
   background: #ff3158;
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.16);
   transform: rotate(-42deg);
-}
-
-[data-sim-end-call] b::before {
-  width: 34px;
-  height: 22px;
-  border: 7px solid currentColor;
-  border-top: 0;
-  border-radius: 0 0 22px 22px;
-  transform: rotate(0deg);
 }
 
 .sim-call-progress {

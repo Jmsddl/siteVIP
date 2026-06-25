@@ -1,4 +1,4 @@
-﻿const CACHE_NAME = 'amanda-vip-v20260624-sim-call-v12';
+﻿const CACHE_NAME = 'amanda-vip-v20260624-sim-call-v13';
 const APP_SHELL = [
   './',
   './index.html',
@@ -55,3 +55,4 @@ self.addEventListener('fetch', (event) => {
       .catch(() => caches.match(event.request).then((cached) => cached || caches.match('./index.html')))
   );
 });
+

@@ -93,7 +93,7 @@ const PREVIEW_CALL_VIDEO_BASE_URL = `https://${PREVIEW_CALL_VIDEO_DOMAIN}/${JAAS
 const PREVIEW_CALL_POLL_MS = 2000;
 const PREVIEW_CHAT_POLL_MS = 3000;
 const PREVIEW_CALL_RING_TIMEOUT_MS = 45000;
-const PREVIEW_SIMULATED_RING_MS = 3600;
+const PREVIEW_SIMULATED_RING_MS = 5600;
 const PREVIEW_SIMULATED_CALL_DEFAULT_SECONDS = 18;
 const PREVIEW_CALL_ACTIVE_STATUSES = ['aguardando', 'chamando', 'liberado', 'em_chamada'];
 const PREVIEW_CHAT_VISIBLE_STATUSES = ['aguardando', 'chamando', 'liberado', 'em_chamada', 'finalizado'];
@@ -1244,19 +1244,46 @@ async function mountSimulatedPreviewCall(container, record) {
       </div>
       <div class="sim-call-bottom">
         <button class="sim-call-control" type="button" data-sim-flip-camera>
-          <b>↻</b>
+          <b>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M7 7h7a5 5 0 1 1-4.4 7.4" />
+              <path d="M7 7V3" />
+              <path d="M7 7H3" />
+              <path d="M17 17h-7a5 5 0 0 1-4.4-7.4" />
+              <path d="M17 17v4" />
+              <path d="M17 17h4" />
+            </svg>
+          </b>
           <span>Virar</span>
         </button>
         <button class="sim-call-control" type="button" data-sim-toggle-camera>
-          <b>▮▶</b>
+          <b>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 7.5A2.5 2.5 0 0 1 6.5 5h8A2.5 2.5 0 0 1 17 7.5v9A2.5 2.5 0 0 1 14.5 19h-8A2.5 2.5 0 0 1 4 16.5z" />
+              <path d="m17 10 4-2.5v9L17 14" />
+            </svg>
+          </b>
           <span>Desligar camera</span>
         </button>
         <button class="sim-call-control" type="button" data-sim-toggle-mic>
-          <b>🎙</b>
+          <b>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 14a4 4 0 0 0 4-4V6a4 4 0 0 0-8 0v4a4 4 0 0 0 4 4z" />
+              <path d="M18 10a6 6 0 0 1-12 0" />
+              <path d="M12 18v3" />
+              <path d="M8.5 21h7" />
+            </svg>
+          </b>
           <span>Ativar som</span>
         </button>
         <button class="sim-call-control is-end" type="button" data-sim-end-call>
-          <b>☎</b>
+          <b>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6.8 14.8c3.1-2.2 7.3-2.2 10.4 0" />
+              <path d="m7.2 14.5-2.1 2.1a2 2 0 0 0 0 2.8l.4.4a2 2 0 0 0 2.8 0l1.1-1.1" />
+              <path d="m16.8 14.5 2.1 2.1a2 2 0 0 1 0 2.8l-.4.4a2 2 0 0 1-2.8 0l-1.1-1.1" />
+            </svg>
+          </b>
           <span>Encerrar</span>
         </button>
       </div>
@@ -1956,6 +1983,8 @@ async function declinePreviewCall() {
   const isSimulatedCall = Boolean(getPreviewCallDetails(previewCallRecord).simulated_call);
 
   stopPreviewRinging();
+  previewAutoJoinPending = false;
+  previewIncomingCallKey = '';
 
   if (!previewCallRecord?.id) {
     closePreviewCallRoom();
@@ -2115,6 +2144,9 @@ async function requestPreviewVideoCall() {
   if (amandaPresenceOnline) {
     previewCallRingTimer = window.setTimeout(() => {
       previewCallRingTimer = null;
+      if (!previewAutoJoinPending || !previewCallRecord?.id || previewCallRecord.status !== 'chamando') {
+        return;
+      }
       enterPreviewCall();
     }, PREVIEW_SIMULATED_RING_MS);
   } else {
@@ -2250,6 +2282,9 @@ function applyPreviewCallStatus(record) {
     if (isSimulatedCall && amandaPresenceOnline && previewAutoJoinPending && !previewCallRingTimer) {
       previewCallRingTimer = window.setTimeout(() => {
         previewCallRingTimer = null;
+        if (!previewAutoJoinPending || !previewCallRecord?.id || previewCallRecord.status !== 'chamando') {
+          return;
+        }
         enterPreviewCall();
       }, PREVIEW_SIMULATED_RING_MS);
     } else if (!isSimulatedCall || !amandaPresenceOnline) {
