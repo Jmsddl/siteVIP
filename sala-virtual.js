@@ -35,6 +35,7 @@ let roomOpenChatId = '';
 let roomMessagesById = new Map();
 let roomMarkingReadIds = new Set();
 let roomChatRenderKeys = new Map();
+let roomChatMessageKeys = new Map();
 
 function getRoomUser() {
   try {
@@ -909,6 +910,8 @@ function renderRoomChatMessages(chamadaId, messages) {
     message.texto,
     message.created_at
   ]));
+  const messageKey = JSON.stringify(messages.map((message) => message.id || message.created_at || message.texto));
+  const shouldScrollToLatest = messageKey !== roomChatMessageKeys.get(chamadaId);
   const isPlaceholder = container.textContent.trim().includes('Carregando conversa');
 
   if (roomChatRenderKeys.get(chamadaId) === renderKey && !isPlaceholder) {
@@ -916,6 +919,7 @@ function renderRoomChatMessages(chamadaId, messages) {
   }
 
   roomChatRenderKeys.set(chamadaId, renderKey);
+  roomChatMessageKeys.set(chamadaId, messageKey);
 
   if (!messages.length) {
     container.innerHTML = '<span class="room-chat-empty">Nenhuma mensagem ainda.</span>';
@@ -944,6 +948,10 @@ function renderRoomChatMessages(chamadaId, messages) {
       </div>
     `;
   }).join('');
+
+  if (shouldScrollToLatest) {
+    container.scrollTop = container.scrollHeight;
+  }
 }
 
 async function loadRoomMessagesForRows() {

@@ -152,6 +152,7 @@ let previewIncomingCallKey = '';
 let previewCallStartedAt = null;
 let presencePollTimer = null;
 let previewChatLastRenderKey = '';
+let previewChatLastMessageKey = '';
 let previewCallClosingForBackground = false;
 let amandaPresenceOnline = false;
 
@@ -1984,6 +1985,8 @@ function renderPreviewChatMessages(messages) {
 
   const visibleMessages = messages.filter(shouldShowPreviewSystemMessageToVisitor);
   const adminReadAtMs = getPreviewAdminReadAtMs();
+  const messageKey = JSON.stringify(visibleMessages.map((message) => message.id || message.created_at || message.texto));
+  const shouldScrollToLatest = messageKey !== previewChatLastMessageKey;
 
   if (previewChatTemporaryRenderTimer) {
     window.clearTimeout(previewChatTemporaryRenderTimer);
@@ -2003,6 +2006,7 @@ function renderPreviewChatMessages(messages) {
   }
 
   previewChatLastRenderKey = renderKey;
+  previewChatLastMessageKey = messageKey;
 
   if (!visibleMessages.length) {
     container.innerHTML = `
@@ -2042,6 +2046,10 @@ function renderPreviewChatMessages(messages) {
       </div>
     `;
   }).join('');
+
+  if (shouldScrollToLatest) {
+    container.scrollTop = container.scrollHeight;
+  }
 }
 
 async function loadPreviewChatMessages() {
