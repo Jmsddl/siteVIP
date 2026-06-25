@@ -809,12 +809,18 @@ function updateSimulatedCallControls(container = document) {
 
   if (micButton) {
     micButton.classList.toggle('is-muted', !previewMicEnabled);
-    micButton.querySelector('span').textContent = previewMicEnabled ? 'Silenciar' : 'Ativar mic';
+    const micLabel = micButton.querySelector('[data-sim-control-label]');
+    if (micLabel) {
+      micLabel.textContent = previewMicEnabled ? 'Silenciar' : 'Ativar mic';
+    }
   }
 
   if (cameraButton) {
     cameraButton.classList.toggle('is-muted', !previewCameraEnabled);
-    cameraButton.querySelector('span').textContent = previewCameraEnabled ? 'Desligar camera' : 'Ligar camera';
+    const cameraLabel = cameraButton.querySelector('[data-sim-control-label]');
+    if (cameraLabel) {
+      cameraLabel.textContent = previewCameraEnabled ? 'Desligar camera' : 'Ligar camera';
+    }
   }
 
   if (cameraBlocked) {
@@ -1343,7 +1349,7 @@ async function mountSimulatedPreviewCall(container, record) {
               <path d="M17 17h4" />
             </svg>
           </b>
-          <span>Virar</span>
+          <span data-sim-control-label>Virar</span>
         </button>
         <button class="sim-call-control" type="button" data-sim-toggle-camera>
           <b>
@@ -1352,10 +1358,10 @@ async function mountSimulatedPreviewCall(container, record) {
               <path d="m17 10 4-2.5v9L17 14" />
             </svg>
           </b>
-          <span>Desligar camera</span>
+          <span data-sim-control-label>Desligar camera</span>
         </button>
         <button class="sim-call-control" type="button" data-sim-toggle-mic>
-          <span class="sim-call-mic-hint">Amanda silenciou o microfone dela</span>
+          <span class="sim-call-mic-hint">Amanda desligou o microfone dela</span>
           <b>
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 14a4 4 0 0 0 4-4V6a4 4 0 0 0-8 0v4a4 4 0 0 0 4 4z" />
@@ -1364,7 +1370,7 @@ async function mountSimulatedPreviewCall(container, record) {
               <path d="M8.5 21h7" />
             </svg>
           </b>
-          <span>Ativar som</span>
+          <span data-sim-control-label>Ativar som</span>
         </button>
         <button class="sim-call-control is-end" type="button" data-sim-end-call>
           <b>
@@ -1374,7 +1380,7 @@ async function mountSimulatedPreviewCall(container, record) {
               <path d="m16.8 14.5 2.1 2.1a2 2 0 0 1 0 2.8l-.4.4a2 2 0 0 1-2.8 0l-1.1-1.1" />
             </svg>
           </b>
-          <span>Encerrar</span>
+          <span data-sim-control-label>Encerrar</span>
         </button>
       </div>
       <div class="sim-call-progress" aria-hidden="true">
@@ -1946,6 +1952,22 @@ function isTemporaryPreviewSystemMessage(message) {
   ].some((pattern) => text.includes(pattern));
 }
 
+function shouldShowPreviewSystemMessageToVisitor(message) {
+  if (message.autor_tipo !== 'sistema') {
+    return true;
+  }
+
+  const text = String(message.texto || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+  return text.includes('conversa iniciada')
+    || text.includes('voce ja participou')
+    || text.includes('agora pague a chamada completa')
+    || text.includes('pague para fazer uma completa');
+}
+
 function getPreviewAdminReadAtMs() {
   const readAt = getPreviewCallDetails(previewCallRecord).admin_read_at;
   const time = readAt ? new Date(readAt).getTime() : 0;
@@ -1960,7 +1982,7 @@ function renderPreviewChatMessages(messages) {
     return;
   }
 
-  const visibleMessages = messages.filter((message) => message.autor_tipo !== 'sistema');
+  const visibleMessages = messages.filter(shouldShowPreviewSystemMessageToVisitor);
   const adminReadAtMs = getPreviewAdminReadAtMs();
 
   if (previewChatTemporaryRenderTimer) {
@@ -1993,6 +2015,7 @@ function renderPreviewChatMessages(messages) {
 
   container.innerHTML = visibleMessages.map((message) => {
     const mine = message.autor_tipo === 'usuario';
+    const system = message.autor_tipo === 'sistema';
     const time = message.created_at
       ? new Date(message.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
       : '';
@@ -2003,6 +2026,14 @@ function renderPreviewChatMessages(messages) {
       && !Number.isNaN(createdAtMs)
       && createdAtMs <= adminReadAtMs;
     const meta = [time, wasRead ? 'Lida' : ''].filter(Boolean).join(' · ');
+
+    if (system) {
+      return `
+        <div class="telegram-system-message">
+          ${escapeHtml(message.texto || '')}
+        </div>
+      `;
+    }
 
     return `
       <div class="telegram-message ${mine ? 'is-mine' : 'is-admin'}">

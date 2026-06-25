@@ -2692,9 +2692,23 @@ body.modal-open {
   padding: 28px 0 48px;
 }
 
+.virtual-room-workspace {
+  display: grid;
+  grid-template-columns: minmax(300px, 420px) minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+}
+
+.virtual-room-workspace:not(.has-open-chat) {
+  grid-template-columns: 1fr;
+}
+
 .virtual-room-grid {
   display: grid;
   gap: 14px;
+  max-height: calc(100vh - 250px);
+  overflow-y: auto;
+  padding-right: 3px;
 }
 
 .room-presence-card {
@@ -2930,6 +2944,82 @@ body.modal-open {
 .room-chat-expanded {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   padding: 0 16px 16px;
+}
+
+.room-side-panel {
+  position: sticky;
+  top: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: min(680px, calc(100vh - 120px));
+  max-height: calc(100vh - 120px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at top left, rgba(233, 30, 140, 0.16), transparent 34%),
+    rgba(14, 14, 16, 0.96);
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.34);
+}
+
+.room-side-panel[hidden] {
+  display: none !important;
+}
+
+.room-side-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+  padding: 14px;
+  background: rgba(233, 30, 140, 0.1);
+}
+
+.room-side-head strong {
+  display: block;
+  color: #fff;
+  font-size: 1rem;
+}
+
+.room-side-head span {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.room-side-back {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  padding: 9px 12px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.room-side-meta {
+  display: grid;
+  gap: 5px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 12px 14px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.room-side-body {
+  overflow-y: auto;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 0 14px 14px;
+}
+
+.room-side-panel .room-chat-messages {
+  max-height: min(42vh, 360px);
 }
 
 .room-chat-box {
@@ -3302,6 +3392,48 @@ body.modal-open {
   .telegram-chat-form,
   .room-chat-form {
     align-items: stretch;
+  }
+
+  .virtual-room-workspace,
+  .virtual-room-workspace.has-open-chat {
+    display: block;
+  }
+
+  .virtual-room-grid {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .room-side-panel {
+    position: fixed;
+    inset: 0;
+    z-index: 980;
+    width: 100vw;
+    height: 100dvh;
+    min-height: 0;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .room-side-head {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .room-side-head .room-status-pill {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .room-side-body {
+    min-height: 0;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+
+  .room-side-panel .room-chat-messages {
+    max-height: 44dvh;
   }
 
   .virtual-room-card-head,

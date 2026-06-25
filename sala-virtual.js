@@ -629,6 +629,7 @@ function renderRoomRows() {
   ]));
 
   if (renderKey === roomRowsRenderKey) {
+    renderRoomSidePanel();
     loadRoomMessagesForRows();
     return;
   }
@@ -636,21 +637,17 @@ function renderRoomRows() {
   roomRowsRenderKey = renderKey;
 
   if (!roomRows.length) {
+    roomOpenChatId = '';
     container.innerHTML = `
       <div class="virtual-room-empty">
         Ninguem aguardando chamada previa agora.
       </div>
     `;
+    renderRoomSidePanel();
     return;
   }
 
   container.innerHTML = roomRows.map((row) => {
-    const isWaiting = row.status === 'aguardando';
-    const isCalling = row.status === 'chamando';
-    const isReleased = row.status === 'liberado';
-    const isInCall = row.status === 'em_chamada';
-    const canOpenVideo = isReleased || isInCall;
-    const canStartAdminCall = isWaiting || row.status === 'finalizado';
     const loginUsername = getRoomLoginUsername(row);
     const details = getRoomDetails(row);
     const phone = row.telefone || details.telefone || '';
@@ -696,88 +693,151 @@ function renderRoomRows() {
             <span>Entrou: ${escapeRoom(formatRoomDate(row.created_at))}</span>
           </div>
         </button>
-        ${isOpen ? `
-          <div class="room-chat-expanded">
-            <div class="room-chat-box">
-              <div class="room-chat-messages" id="room-chat-${rowId}">
-                Carregando conversa...
-              </div>
-              <form class="room-chat-form" onsubmit="sendRoomMessage(event, '${rowId}')">
-                <input
-                  type="text"
-                  maxlength="500"
-                  autocomplete="off"
-                  placeholder="Responder mensagem..."
-                />
-                <button type="submit">Enviar</button>
-              </form>
-            </div>
-            <div class="room-video-stage" id="room-video-${rowId}" hidden>
-              <div
-                class="room-video-frame"
-                data-room-video-frame
-                aria-label="Chamada de video com ${escapeRoom(getRoomDisplayName(row))}"
-              ></div>
-            </div>
-            <div class="virtual-room-actions">
-              <button
-                class="btn-primary"
-                type="button"
-                onclick="acceptIncomingCall('${rowId}')"
-                ${isCalling ? '' : 'disabled'}
-              >
-                Atender agora
-              </button>
-              <button
-                class="btn-secondary"
-                type="button"
-                onclick="startAdminVideoCall('${rowId}')"
-                ${canStartAdminCall ? '' : 'disabled'}
-              >
-                Ligar para usuario
-              </button>
-              <button
-                class="btn-secondary"
-                type="button"
-                onclick="openAdminVideoCall('${rowId}')"
-                ${canOpenVideo ? '' : 'disabled'}
-              >
-                Abrir chamada de video
-              </button>
-              <button
-                class="btn-secondary"
-                type="button"
-                onclick="finishPreviewCall('${rowId}')"
-                ${isReleased || isInCall ? '' : 'disabled'}
-              >
-                Finalizar
-              </button>
-              <button
-                class="btn-secondary"
-                type="button"
-                onclick="${isCalling ? 'declineIncomingCall' : 'cancelPreviewCall'}('${rowId}')"
-                ${isWaiting || isCalling ? '' : 'disabled'}
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        ` : ''}
       </article>
     `;
   }).join('');
 
+  renderRoomSidePanel();
   loadRoomMessagesForRows();
 }
 
 function toggleRoomChat(id) {
-  roomOpenChatId = roomOpenChatId === id ? '' : id;
+  roomOpenChatId = id;
   roomRowsRenderKey = '';
   renderRoomRows();
 
   if (roomOpenChatId) {
     markRoomChatRead(roomOpenChatId);
   }
+}
+
+function closeRoomChatPanel() {
+  roomOpenChatId = '';
+  roomRowsRenderKey = '';
+  renderRoomRows();
+}
+
+function renderRoomSidePanel() {
+  const panel = document.getElementById('room-side-panel');
+  const workspace = document.getElementById('room-workspace');
+
+  if (!panel) {
+    return;
+  }
+
+  const row = roomRows.find((item) => item.id === roomOpenChatId);
+
+  if (!row) {
+    panel.hidden = true;
+    panel.innerHTML = '';
+    workspace?.classList.remove('has-open-chat');
+    roomOpenChatId = '';
+    return;
+  }
+
+  const isWaiting = row.status === 'aguardando';
+  const isCalling = row.status === 'chamando';
+  const isReleased = row.status === 'liberado';
+  const isInCall = row.status === 'em_chamada';
+  const canOpenVideo = isReleased || isInCall;
+  const canStartAdminCall = isWaiting || row.status === 'finalizado';
+  const loginUsername = getRoomLoginUsername(row);
+  const details = getRoomDetails(row);
+  const phone = row.telefone || details.telefone || '';
+  const rowId = escapeRoom(row.id);
+  const planLine = loginUsername
+    ? `${row.plano || '-'} - login ${loginUsername}`
+    : (row.plano || '-');
+
+  workspace?.classList.add('has-open-chat');
+  panel.hidden = false;
+  panel.innerHTML = `
+    <div class="room-side-head">
+      <button class="room-side-back" type="button" onclick="closeRoomChatPanel()">
+        Voltar
+      </button>
+      <div>
+        <strong>${escapeRoom(getRoomDisplayName(row))}</strong>
+        <span>${escapeRoom(planLine)}</span>
+      </div>
+      <b class="room-status-pill is-${escapeRoom(String(row.status || 'aguardando').replace(/[^a-z0-9_-]/gi, ''))}">
+        ${escapeRoom(getRoomStatusLabel(row.status))}
+      </b>
+    </div>
+    <div class="room-side-meta">
+      <span>Telefone: ${escapeRoom(phone || '-')}</span>
+      <span>IP: ${escapeRoom(row.ip || 'sem IP')}</span>
+      <span>Sessao: ${escapeRoom(String(row.sessao_id || '').slice(0, 8) || '-')}</span>
+      <span>Entrou: ${escapeRoom(formatRoomDate(row.created_at))}</span>
+    </div>
+    <div class="room-side-body">
+      <div class="room-chat-box">
+        <div class="room-chat-messages" id="room-chat-${rowId}">
+          Carregando conversa...
+        </div>
+        <form class="room-chat-form" onsubmit="sendRoomMessage(event, '${rowId}')">
+          <input
+            type="text"
+            maxlength="500"
+            autocomplete="off"
+            placeholder="Responder mensagem..."
+          />
+          <button type="submit">Enviar</button>
+        </form>
+      </div>
+      <div class="room-video-stage" id="room-video-${rowId}" hidden>
+        <div
+          class="room-video-frame"
+          data-room-video-frame
+          aria-label="Chamada de video com ${escapeRoom(getRoomDisplayName(row))}"
+        ></div>
+      </div>
+      <div class="virtual-room-actions">
+        <button
+          class="btn-primary"
+          type="button"
+          onclick="acceptIncomingCall('${rowId}')"
+          ${isCalling ? '' : 'disabled'}
+        >
+          Atender agora
+        </button>
+        <button
+          class="btn-secondary"
+          type="button"
+          onclick="startAdminVideoCall('${rowId}')"
+          ${canStartAdminCall ? '' : 'disabled'}
+        >
+          Ligar para usuario
+        </button>
+        <button
+          class="btn-secondary"
+          type="button"
+          onclick="openAdminVideoCall('${rowId}')"
+          ${canOpenVideo ? '' : 'disabled'}
+        >
+          Abrir chamada de video
+        </button>
+        <button
+          class="btn-secondary"
+          type="button"
+          onclick="finishPreviewCall('${rowId}')"
+          ${isReleased || isInCall ? '' : 'disabled'}
+        >
+          Finalizar
+        </button>
+        <button
+          class="btn-secondary"
+          type="button"
+          onclick="${isCalling ? 'declineIncomingCall' : 'cancelPreviewCall'}('${rowId}')"
+          ${isWaiting || isCalling ? '' : 'disabled'}
+        >
+          Cancelar
+        </button>
+      </div>
+    </div>
+  `;
+
+  renderRoomChatMessages(row.id, roomMessagesById.get(row.id) || []);
 }
 
 async function markRoomChatRead(id) {
@@ -1061,6 +1121,10 @@ async function openAdminVideoCall(id) {
     return;
   }
 
+  roomOpenChatId = id;
+  roomRowsRenderKey = '';
+  renderRoomRows();
+
   try {
     await mountRoomJitsiMeeting(id, row, 'Amanda');
   } catch (error) {
@@ -1097,6 +1161,10 @@ async function acceptIncomingCall(id) {
   if (!updated) {
     return;
   }
+
+  roomOpenChatId = id;
+  roomRowsRenderKey = '';
+  renderRoomRows();
 
   await insertRoomSystemMessage(
     id,
@@ -1165,6 +1233,10 @@ async function startAdminVideoCall(id) {
     return;
   }
 
+  roomOpenChatId = id;
+  roomRowsRenderKey = '';
+  renderRoomRows();
+
   await insertRoomSystemMessage(
     id,
     'Amanda esta ligando para voce. Toque em Atender chamada.'
@@ -1223,7 +1295,7 @@ function setupVirtualRoom() {
       denied.hidden = false;
     }
 
-    document.querySelectorAll('.analytics-hero, .virtual-room-grid, .analytics-status')
+    document.querySelectorAll('.analytics-hero, .virtual-room-workspace, .analytics-status')
       .forEach((element) => {
         element.style.display = 'none';
       });
