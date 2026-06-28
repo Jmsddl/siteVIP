@@ -7,7 +7,7 @@
   <title>Sala virtual</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="style.css?v=20260628-complete-call-v1" />
+  <link rel="stylesheet" href="style.css?v=20260628-complete-call-v2" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
@@ -142,7 +142,7 @@
   </div>
 
   <div class="complete-admin-call-modal" id="complete-admin-call-modal" hidden>
-    <div class="complete-video-card">
+    <div class="complete-video-card is-admin-call" data-complete-admin-screen>
       <div class="complete-video-head">
         <div>
           <span class="call-modal-kicker">Chamada completa</span>
@@ -159,13 +159,29 @@
         </button>
       </div>
       <div class="complete-video-grid">
-        <div class="complete-video-box">
+        <div class="complete-video-box is-client">
           <video id="complete-admin-remote-video" autoplay playsinline></video>
           <span>Cliente</span>
         </div>
         <div class="complete-video-box is-local">
           <video id="complete-admin-local-video" autoplay muted playsinline></video>
           <span>Amanda</span>
+        </div>
+        <div class="complete-call-top">
+          <strong>Chamada completa</strong>
+          <span><i></i> <b id="complete-admin-call-time">00:00</b></span>
+        </div>
+        <div class="complete-call-bottom is-admin-only">
+          <button class="sim-call-control is-end" type="button" onclick="endAdminCompleteCall()">
+            <b>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M6.8 14.8c3.1-2.2 7.3-2.2 10.4 0" />
+                <path d="m7.2 14.5-2.1 2.1a2 2 0 0 0 0 2.8l.4.4a2 2 0 0 0 2.8 0l1.1-1.1" />
+                <path d="m16.8 14.5 2.1 2.1a2 2 0 0 1 0 2.8l-.4.4a2 2 0 0 1-2.8 0l-1.1-1.1" />
+              </svg>
+            </b>
+            <span>Encerrar</span>
+          </button>
         </div>
       </div>
       <div class="complete-video-actions">
@@ -180,10 +196,11 @@
   <script src="supabase-config.js?v=20260617-analytics"></script>
   <script src="auth.js?v=20260617-analytics"></script>
   <script src="https://8x8.vc/vpaas-magic-cookie-40aa8f8eaa4b44919530d6a192485f88/external_api.js"></script>
-  <script src="sala-virtual.js?v=20260628-complete-call-v1"></script>
-  <script src="pwa.js?v=20260628-complete-call-v1"></script>
+  <script src="sala-virtual.js?v=20260628-complete-call-v2"></script>
+  <script src="pwa.js?v=20260628-complete-call-v2"></script>
 </body>
 </html>
+
 
 
 

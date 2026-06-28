@@ -19,11 +19,15 @@ const COMPLETE_CALL_SIGNALS_TABLE = 'chamada_completa_sinais';
 const COMPLETE_CALL_REFRESH_MS = 2500;
 const COMPLETE_CALL_SIGNAL_POLL_MS = 1500;
 const COMPLETE_CALL_RTC_CONFIG = {
+  iceCandidatePoolSize: 10,
+  bundlePolicy: 'max-bundle',
+  rtcpMuxPolicy: 'require',
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' }
   ]
 };
+const COMPLETE_CALL_CONTROLS_HIDE_MS = 5200;
 
 let roomRows = [];
 let roomTimer = null;
@@ -58,6 +62,9 @@ let completeAdminSignalPollTimer = null;
 let completeAdminLastSignalId = 0;
 let completeAdminPendingIce = [];
 let completeAdminEnding = false;
+let completeAdminControlsTimer = null;
+let completeAdminClockTimer = null;
+let completeAdminAutoEndTimer = null;
 
 function getRoomUser() {
   try {
@@ -667,6 +674,115 @@ function setCompleteAdminCallStatus(message) {
   }
 }
 
+function formatCompleteAdminClock(seconds) {
+  const safeSeconds = Math.max(0, Number(seconds) || 0);
+  const minutes = String(Math.floor(safeSeconds / 60)).padStart(2, '0');
+  const rest = String(safeSeconds % 60).padStart(2, '0');
+
+  return `${minutes}:${rest}`;
+}
+
+function getCompleteAdminVideoConstraints() {
+  return {
+    width: { ideal: 540, max: 720 },
+    height: { ideal: 960, max: 1280 },
+    frameRate: { ideal: 24, max: 30 }
+  };
+}
+
+function setCompleteAdminStartedState(started) {
+  const screen = document.querySelector('[data-complete-admin-screen]');
+
+  if (!screen) {
+    return;
+  }
+
+  screen.classList.toggle('is-call-started', Boolean(started));
+
+  if (!started) {
+    screen.classList.remove('is-controls-hidden');
+  }
+}
+
+function setCompleteAdminControlsVisible(visible) {
+  const screen = document.querySelector('[data-complete-admin-screen]');
+
+  if (!screen) {
+    return;
+  }
+
+  screen.classList.toggle('is-controls-hidden', !visible);
+}
+
+function scheduleCompleteAdminControlsHide() {
+  if (completeAdminControlsTimer) {
+    window.clearTimeout(completeAdminControlsTimer);
+  }
+
+  completeAdminControlsTimer = window.setTimeout(() => {
+    completeAdminControlsTimer = null;
+    setCompleteAdminControlsVisible(false);
+  }, COMPLETE_CALL_CONTROLS_HIDE_MS);
+}
+
+function showCompleteAdminControlsTemporarily() {
+  setCompleteAdminControlsVisible(true);
+  scheduleCompleteAdminControlsHide();
+}
+
+function bindCompleteAdminControlReveal() {
+  const screen = document.querySelector('[data-complete-admin-screen]');
+
+  if (!screen || screen.dataset.controlsBound === 'true') {
+    return;
+  }
+
+  screen.dataset.controlsBound = 'true';
+  screen.addEventListener('pointerdown', showCompleteAdminControlsTemporarily, { passive: true });
+  screen.addEventListener('mousemove', showCompleteAdminControlsTemporarily, { passive: true });
+  screen.addEventListener('contextmenu', (event) => event.preventDefault());
+}
+
+function resetCompleteAdminClock() {
+  if (completeAdminClockTimer) {
+    window.clearInterval(completeAdminClockTimer);
+    completeAdminClockTimer = null;
+  }
+
+  if (completeAdminAutoEndTimer) {
+    window.clearTimeout(completeAdminAutoEndTimer);
+    completeAdminAutoEndTimer = null;
+  }
+
+  const clock = document.getElementById('complete-admin-call-time');
+
+  if (clock) {
+    clock.textContent = '00:00';
+  }
+}
+
+function startCompleteAdminClock() {
+  if (completeAdminClockTimer) {
+    return;
+  }
+
+  const clock = document.getElementById('complete-admin-call-time');
+  const startedAt = Date.now();
+  const maxMs = Math.max(1, Number(completeAdminSession?.duracao_minutos) || 5) * 60 * 1000;
+
+  completeAdminClockTimer = window.setInterval(() => {
+    const elapsed = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+
+    if (clock) {
+      clock.textContent = formatCompleteAdminClock(elapsed);
+    }
+  }, 500);
+
+  completeAdminAutoEndTimer = window.setTimeout(() => {
+    endAdminCompleteCall('tempo_esgotado');
+  }, maxMs);
+}
+
 function stopCompleteAdminStreams() {
   [completeAdminLocalStream, completeAdminRemoteStream].forEach((stream) => {
     stream?.getTracks?.().forEach((track) => track.stop());
@@ -708,6 +824,8 @@ function cleanupCompleteAdminCall() {
   }
 
   completeAdminPeer = null;
+  resetCompleteAdminClock();
+  setCompleteAdminStartedState(false);
   stopCompleteAdminStreams();
 }
 
@@ -757,6 +875,9 @@ async function acceptCompleteAdminOffer(offer) {
   const answer = await completeAdminPeer.createAnswer();
   await completeAdminPeer.setLocalDescription(answer);
   await sendCompleteAdminSignal('answer', answer);
+  startCompleteAdminClock();
+  setCompleteAdminStartedState(true);
+  showCompleteAdminControlsTemporarily();
 
   await _supa
     .from(COMPLETE_CALL_SESSIONS_TABLE)
@@ -916,6 +1037,11 @@ async function answerCompleteAdminCall(sessionId) {
     modal.hidden = false;
   }
 
+  resetCompleteAdminClock();
+  setCompleteAdminStartedState(true);
+  bindCompleteAdminControlReveal();
+  showCompleteAdminControlsTemporarily();
+
   if (title) {
     title.textContent = `${session.username || 'Cliente'} - ${session.codigo || ''}`;
   }
@@ -923,7 +1049,7 @@ async function answerCompleteAdminCall(sessionId) {
   try {
     setCompleteAdminCallStatus('Abrindo camera de Amanda sem audio...');
     completeAdminLocalStream = await navigator.mediaDevices.getUserMedia({
-      video: true,
+      video: getCompleteAdminVideoConstraints(),
       audio: false
     });
 
@@ -959,10 +1085,17 @@ async function answerCompleteAdminCall(sessionId) {
 
       if (state === 'connected') {
         setCompleteAdminCallStatus('Chamada conectada. Video ao vivo ativo.');
+        startCompleteAdminClock();
+        showCompleteAdminControlsTemporarily();
       }
 
       if (state === 'failed' || state === 'disconnected') {
-        setCompleteAdminCallStatus('Conexao instavel. Se precisar, encerre e gere outro token.');
+        setCompleteAdminCallStatus('Conexao instavel. Tentando estabilizar...');
+        try {
+          completeAdminPeer?.restartIce?.();
+        } catch (error) {
+          console.warn('Nao consegui reiniciar ICE admin:', error);
+        }
       }
     };
 

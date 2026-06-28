@@ -127,11 +127,15 @@ const COMPLETE_CALL_SESSIONS_TABLE = 'chamada_completa_sessoes';
 const COMPLETE_CALL_SIGNALS_TABLE = 'chamada_completa_sinais';
 const COMPLETE_CALL_SIGNAL_POLL_MS = 1500;
 const COMPLETE_CALL_RTC_CONFIG = {
+  iceCandidatePoolSize: 10,
+  bundlePolicy: 'max-bundle',
+  rtcpMuxPolicy: 'require',
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' }
   ]
 };
+const COMPLETE_CALL_CONTROLS_HIDE_MS = 5200;
 
 let vipConfig = { ...DEFAULT_VIP_CONFIG };
 let floatingOfferInitialized = false;
@@ -175,6 +179,13 @@ let completeCallLastSignalId = 0;
 let completeCallStarted = false;
 let completeCallPendingIce = [];
 let completeCallEnding = false;
+let completeCallFacingMode = 'user';
+let completeCallCameraEnabled = true;
+let completeCallMicEnabled = false;
+let completeCallControlsTimer = null;
+let completeCallClockTimer = null;
+let completeCallAutoEndTimer = null;
+let completeCallConnected = false;
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -512,6 +523,210 @@ function setCompleteVideoStatus(message) {
   }
 }
 
+function getCompleteVideoConstraints(facingMode = completeCallFacingMode) {
+  return {
+    facingMode,
+    width: { ideal: 540, max: 720 },
+    height: { ideal: 960, max: 1280 },
+    frameRate: { ideal: 24, max: 30 }
+  };
+}
+
+function setCompleteCallControlsVisible(visible) {
+  const screen = document.querySelector('[data-complete-screen]');
+
+  if (!screen || !completeCallStarted) {
+    return;
+  }
+
+  screen.classList.toggle('is-controls-hidden', !visible);
+}
+
+function scheduleCompleteCallControlsHide() {
+  if (completeCallControlsTimer) {
+    window.clearTimeout(completeCallControlsTimer);
+  }
+
+  completeCallControlsTimer = window.setTimeout(() => {
+    completeCallControlsTimer = null;
+    setCompleteCallControlsVisible(false);
+  }, COMPLETE_CALL_CONTROLS_HIDE_MS);
+}
+
+function showCompleteCallControlsTemporarily() {
+  if (!completeCallStarted) {
+    return;
+  }
+
+  setCompleteCallControlsVisible(true);
+  scheduleCompleteCallControlsHide();
+}
+
+function updateCompleteCallControls() {
+  const cameraButton = document.querySelector('[data-complete-toggle-camera]');
+  const micButton = document.querySelector('[data-complete-toggle-mic]');
+  const cameraLabel = document.querySelector('[data-complete-camera-label]');
+  const micLabel = document.querySelector('[data-complete-mic-label]');
+
+  if (cameraButton) {
+    cameraButton.classList.toggle('is-muted', !completeCallCameraEnabled);
+  }
+
+  if (cameraLabel) {
+    cameraLabel.textContent = completeCallCameraEnabled ? 'Desligar câmera' : 'Ligar câmera';
+  }
+
+  if (micButton) {
+    micButton.classList.toggle('is-muted', !completeCallMicEnabled);
+  }
+
+  if (micLabel) {
+    micLabel.textContent = completeCallMicEnabled ? 'Silenciar' : 'Mic desligado';
+  }
+}
+
+function resetCompleteCallClock() {
+  if (completeCallClockTimer) {
+    window.clearInterval(completeCallClockTimer);
+    completeCallClockTimer = null;
+  }
+
+  if (completeCallAutoEndTimer) {
+    window.clearTimeout(completeCallAutoEndTimer);
+    completeCallAutoEndTimer = null;
+  }
+
+  const clock = document.getElementById('complete-call-time');
+
+  if (clock) {
+    clock.textContent = '00:00';
+  }
+}
+
+function startCompleteCallClock() {
+  if (completeCallClockTimer) {
+    return;
+  }
+
+  const clock = document.getElementById('complete-call-time');
+  const startedAt = Date.now();
+  const maxMs = Math.max(1, Number(completeCallSession?.duracao_minutos) || 5) * 60 * 1000;
+
+  completeCallClockTimer = window.setInterval(() => {
+    const elapsed = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+
+    if (clock) {
+      clock.textContent = formatSimulatedElapsedClock(elapsed);
+    }
+  }, 500);
+
+  completeCallAutoEndTimer = window.setTimeout(() => {
+    endCompleteVideoCall('tempo_esgotado');
+  }, maxMs);
+}
+
+function setCompleteCallStartedState(started) {
+  const screen = document.querySelector('[data-complete-screen]');
+
+  if (!screen) {
+    return;
+  }
+
+  screen.classList.toggle('is-call-started', Boolean(started));
+
+  if (started) {
+    showCompleteCallControlsTemporarily();
+  } else {
+    screen.classList.remove('is-controls-hidden', 'is-mic-hint-visible');
+  }
+}
+
+function bindCompleteCallControlReveal() {
+  const screen = document.querySelector('[data-complete-screen]');
+
+  if (!screen || screen.dataset.controlsBound === 'true') {
+    return;
+  }
+
+  screen.dataset.controlsBound = 'true';
+  screen.addEventListener('pointerdown', showCompleteCallControlsTemporarily, { passive: true });
+  screen.addEventListener('mousemove', showCompleteCallControlsTemporarily, { passive: true });
+  screen.addEventListener('contextmenu', (event) => event.preventDefault());
+}
+
+function replaceCompleteVideoTrack(track) {
+  const sender = completeCallPeer?.getSenders?.()
+    .find((item) => item.track?.kind === 'video');
+
+  if (sender && track) {
+    return sender.replaceTrack(track);
+  }
+
+  return Promise.resolve();
+}
+
+async function requestCompleteCameraStream(facingMode = completeCallFacingMode) {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error('Camera indisponivel neste navegador.');
+  }
+
+  return navigator.mediaDevices.getUserMedia({
+    video: getCompleteVideoConstraints(facingMode),
+    audio: false
+  });
+}
+
+async function flipCompleteCamera() {
+  if (!completeCallStarted) {
+    return;
+  }
+
+  const nextFacingMode = completeCallFacingMode === 'user' ? 'environment' : 'user';
+  const localVideo = document.getElementById('complete-local-video');
+
+  try {
+    const nextStream = await requestCompleteCameraStream(nextFacingMode);
+    const nextTrack = nextStream.getVideoTracks()[0];
+
+    await replaceCompleteVideoTrack(nextTrack);
+    completeCallLocalStream?.getVideoTracks().forEach((track) => track.stop());
+    completeCallLocalStream = nextStream;
+    completeCallFacingMode = nextFacingMode;
+    completeCallCameraEnabled = true;
+
+    if (localVideo) {
+      localVideo.srcObject = completeCallLocalStream;
+      localVideo.play?.().catch(() => {});
+    }
+
+    updateCompleteCallControls();
+    showCompleteCallControlsTemporarily();
+  } catch (error) {
+    console.warn('Nao consegui virar camera da chamada completa:', error.message || error);
+    setCompleteVideoStatus('Nao consegui virar a camera neste aparelho.');
+  }
+}
+
+function toggleCompleteCamera() {
+  completeCallCameraEnabled = !completeCallCameraEnabled;
+  completeCallLocalStream?.getVideoTracks().forEach((track) => {
+    track.enabled = completeCallCameraEnabled;
+  });
+  updateCompleteCallControls();
+  showCompleteCallControlsTemporarily();
+}
+
+function toggleCompleteMic() {
+  completeCallMicEnabled = false;
+  updateCompleteCallControls();
+  showCompleteCallControlsTemporarily();
+
+  window.setTimeout(() => {
+    const screen = document.querySelector('[data-complete-screen]');
+    screen?.classList.remove('is-mic-hint-visible');
+  }, 4600);
+}
+
 function openPaidCallTokenModal() {
   const modal = document.getElementById('paid-call-token-modal');
   const input = document.getElementById('complete-token-input');
@@ -553,6 +768,10 @@ function openCompleteVideoModal(session) {
   completeCallLastSignalId = 0;
   completeCallPendingIce = [];
   completeCallEnding = false;
+  completeCallFacingMode = 'user';
+  completeCallCameraEnabled = true;
+  completeCallMicEnabled = false;
+  completeCallConnected = false;
 
   if (tokenModal) {
     tokenModal.hidden = true;
@@ -572,6 +791,10 @@ function openCompleteVideoModal(session) {
   }
 
   setCompleteVideoStatus('Clique em ligar para iniciar a transmissão de vídeo.');
+  resetCompleteCallClock();
+  setCompleteCallStartedState(false);
+  updateCompleteCallControls();
+  bindCompleteCallControlReveal();
   hideFloatingOfferPanel();
 }
 
@@ -617,6 +840,9 @@ function cleanupCompleteCallConnection() {
 
   completeCallPeer = null;
   completeCallStarted = false;
+  completeCallConnected = false;
+  resetCompleteCallClock();
+  setCompleteCallStartedState(false);
   stopCompleteVideoStreams();
 }
 
@@ -668,6 +894,8 @@ async function handleCompleteCallSignal(signal) {
       await completeCallPeer.setRemoteDescription(new RTCSessionDescription(signal.payload));
       await flushCompletePendingIce();
       setCompleteVideoStatus('Chamada conectada. Vídeo ao vivo ativo.');
+      startCompleteCallClock();
+      setCompleteCallStartedState(true);
     }
     return;
   }
@@ -873,11 +1101,16 @@ async function startCompleteVideoCall() {
       startButton.textContent = 'Conectando...';
     }
 
+    setCompleteCallStartedState(true);
+    updateCompleteCallControls();
+    const completeScreen = document.querySelector('[data-complete-screen]');
+    completeScreen?.classList.add('is-mic-hint-visible');
+    window.setTimeout(() => {
+      completeScreen?.classList.remove('is-mic-hint-visible');
+    }, 5600);
     setCompleteVideoStatus('Abrindo sua camera sem audio...');
-    completeCallLocalStream = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: false
-    });
+    completeCallLocalStream = await requestCompleteCameraStream('user');
+    completeCallFacingMode = 'user';
 
     if (localVideo) {
       localVideo.srcObject = completeCallLocalStream;
@@ -911,11 +1144,19 @@ async function startCompleteVideoCall() {
       const state = completeCallPeer?.connectionState;
 
       if (state === 'connected') {
+        completeCallConnected = true;
         setCompleteVideoStatus('Chamada conectada. Vídeo ao vivo ativo.');
+        startCompleteCallClock();
+        setCompleteCallStartedState(true);
       }
 
       if (state === 'failed' || state === 'disconnected') {
-        setCompleteVideoStatus('Conexao instavel. Tente encerrar e abrir novamente.');
+        setCompleteVideoStatus('Conexao instavel. Tentando estabilizar...');
+        try {
+          completeCallPeer?.restartIce?.();
+        } catch (error) {
+          console.warn('Nao consegui reiniciar ICE:', error);
+        }
       }
     };
 
@@ -952,6 +1193,7 @@ async function startCompleteVideoCall() {
       startButton.disabled = false;
       startButton.textContent = 'Tentar novamente';
     }
+    setCompleteCallStartedState(false);
   }
 }
 
@@ -3307,6 +3549,10 @@ function setupCallHandlers() {
   const completeTokenForm = document.getElementById('complete-token-form');
   const completeTokenInput = document.getElementById('complete-token-input');
   const completeStartButton = document.getElementById('complete-start-call');
+  const completeFlipButton = document.querySelector('[data-complete-flip-camera]');
+  const completeCameraButton = document.querySelector('[data-complete-toggle-camera]');
+  const completeMicButton = document.querySelector('[data-complete-toggle-mic]');
+  const completeEndButton = document.querySelector('[data-complete-end-call]');
 
   if (previewEnter) {
     previewEnter.addEventListener('click', () => {
@@ -3402,6 +3648,12 @@ function setupCallHandlers() {
   if (completeStartButton) {
     completeStartButton.addEventListener('click', startCompleteVideoCall);
   }
+
+  completeFlipButton?.addEventListener('click', flipCompleteCamera);
+  completeCameraButton?.addEventListener('click', toggleCompleteCamera);
+  completeMicButton?.addEventListener('click', toggleCompleteMic);
+  completeEndButton?.addEventListener('click', () => endCompleteVideoCall('cliente'));
+  bindCompleteCallControlReveal();
 }
 
 function setAmandaPresence(isOnline) {

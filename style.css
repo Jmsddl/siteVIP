@@ -1254,6 +1254,17 @@ body.modal-open {
   text-align: left;
 }
 
+.complete-video-card.is-call-started {
+  width: min(440px, calc(100vw - 20px));
+  height: min(780px, calc(100dvh - 16px));
+  overflow: hidden;
+  display: flex;
+  padding: 0;
+  border-radius: 24px;
+  background: #000;
+  text-align: center;
+}
+
 .complete-video-head {
   display: flex;
   align-items: flex-start;
@@ -1274,9 +1285,22 @@ body.modal-open {
 }
 
 .complete-video-grid {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(220px, 0.42fr);
   gap: 12px;
+}
+
+.complete-video-card.is-call-started .complete-video-head,
+.complete-video-card.is-call-started .complete-video-actions {
+  display: none !important;
+}
+
+.complete-video-card.is-call-started .complete-video-grid {
+  flex: 1 1 auto;
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .complete-video-box {
@@ -1292,6 +1316,47 @@ body.modal-open {
   min-height: 220px;
 }
 
+.complete-video-card.is-call-started .complete-video-box {
+  border-radius: 0;
+}
+
+.complete-video-card.is-call-started .complete-video-box:not(.is-local),
+.complete-video-card.is-admin-call.is-call-started .complete-video-box.is-local {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  min-height: 100%;
+  border: 0;
+}
+
+.complete-video-card.is-call-started .complete-video-box.is-local {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  bottom: auto;
+  z-index: 4;
+  width: min(26%, 98px);
+  min-height: 128px;
+  aspect-ratio: 3 / 4;
+  border: 1px solid rgba(255, 255, 255, 0.46);
+  border-radius: 14px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.42);
+}
+
+.complete-video-card.is-admin-call.is-call-started .complete-video-box.is-client {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  bottom: auto;
+  z-index: 4;
+  width: min(28%, 150px);
+  min-height: 132px;
+  aspect-ratio: 3 / 4;
+  border: 1px solid rgba(255, 255, 255, 0.46);
+  border-radius: 14px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.42);
+}
+
 .complete-video-box video {
   width: 100%;
   height: 100%;
@@ -1299,6 +1364,10 @@ body.modal-open {
   display: block;
   object-fit: cover;
   background: #050505;
+}
+
+.complete-video-box.is-local video {
+  transform: scaleX(-1);
 }
 
 .complete-video-box span {
@@ -1311,6 +1380,115 @@ body.modal-open {
   background: rgba(0, 0, 0, 0.55);
   font-size: 0.78rem;
   font-weight: 800;
+}
+
+.complete-call-top,
+.complete-call-bottom {
+  position: absolute;
+  z-index: 6;
+  display: none;
+  opacity: 1;
+  transition: opacity 0.24s ease, transform 0.24s ease;
+}
+
+.complete-video-card.is-call-started .complete-call-top,
+.complete-video-card.is-call-started .complete-call-bottom {
+  display: flex;
+}
+
+.complete-call-top {
+  top: 28px;
+  left: 18px;
+  right: 18px;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  color: #fff;
+  text-align: center;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.58);
+  pointer-events: none;
+}
+
+.complete-call-top strong {
+  font-size: clamp(1.9rem, 7vw, 2.65rem);
+  font-weight: 500;
+  line-height: 1.04;
+}
+
+.complete-call-top span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 1.12rem;
+  font-weight: 800;
+}
+
+.complete-call-top span i {
+  width: 24px;
+  height: 18px;
+  display: inline-block;
+  background:
+    linear-gradient(to top, rgba(255, 255, 255, 0.85) 0 35%, transparent 35%),
+    linear-gradient(to top, rgba(255, 255, 255, 0.85) 0 58%, transparent 58%),
+    linear-gradient(to top, rgba(255, 255, 255, 0.85) 0 82%, transparent 82%);
+  background-size: 5px 100%;
+  background-position: 0 0, 8px 0, 16px 0;
+  background-repeat: no-repeat;
+}
+
+.complete-call-top em {
+  margin-top: 8px;
+  border-radius: 999px;
+  padding: 8px 13px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.46);
+  backdrop-filter: blur(10px);
+  font-style: normal;
+  font-size: 0.86rem;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.24s ease, transform 0.24s ease;
+}
+
+.complete-video-card.is-mic-hint-visible:not(.is-controls-hidden) .complete-call-top em,
+.complete-video-card.is-mic-hint-visible:not(.is-controls-hidden) [data-complete-toggle-mic] .sim-call-mic-hint {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+
+.complete-video-card.is-mic-hint-visible:not(.is-controls-hidden) .complete-call-top em {
+  transform: translateY(0);
+}
+
+.complete-call-bottom {
+  left: 0;
+  right: 0;
+  bottom: 22px;
+  justify-content: space-around;
+  gap: 8px;
+  padding: 0 14px;
+}
+
+.complete-call-bottom.is-admin-only {
+  justify-content: center;
+}
+
+.complete-video-card.is-controls-hidden .complete-call-top {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-18px);
+}
+
+.complete-video-card.is-controls-hidden .complete-call-bottom {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(22px);
+}
+
+.complete-video-card.is-controls-hidden .complete-video-box.is-local,
+.complete-video-card.is-admin-call.is-controls-hidden .complete-video-box.is-client {
+  opacity: 0.82;
+  transform: scale(0.94);
 }
 
 .complete-video-actions {
@@ -3610,6 +3788,12 @@ body.modal-open {
     flex-direction: column;
   }
 
+  .complete-video-card.is-call-started {
+    width: calc(100vw - 16px);
+    height: calc(100dvh - 16px);
+    padding: 0;
+  }
+
   .complete-video-head {
     flex: 0 0 auto;
   }
@@ -3626,12 +3810,45 @@ body.modal-open {
 
   .complete-video-box.is-local {
     position: absolute;
-    right: 24px;
-    bottom: 92px;
-    z-index: 2;
-    width: 34%;
-    min-height: 150px;
+    top: 12px;
+    right: 12px;
+    bottom: auto;
+    z-index: 4;
+    width: min(25%, 92px);
+    min-height: 118px;
     box-shadow: 0 12px 34px rgba(0, 0, 0, 0.4);
+  }
+
+  .complete-video-card.is-admin-call.is-call-started .complete-video-box.is-client {
+    top: 12px;
+    right: 12px;
+    width: min(25%, 96px);
+    min-height: 118px;
+  }
+
+  .complete-call-top {
+    top: 24px;
+    left: 12px;
+    right: 12px;
+  }
+
+  .complete-call-top strong {
+    font-size: clamp(1.55rem, 8vw, 2.2rem);
+  }
+
+  .complete-call-bottom {
+    bottom: 12px;
+    padding: 0 8px;
+  }
+
+  .complete-call-bottom .sim-call-control {
+    width: 72px;
+    font-size: 0.74rem;
+  }
+
+  .complete-call-bottom .sim-call-control b {
+    width: 56px;
+    height: 56px;
   }
 
   .complete-video-actions {
