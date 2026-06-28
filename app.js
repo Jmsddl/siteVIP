@@ -1070,13 +1070,6 @@ async function handleCompleteCallSignal(signal) {
 
   completeCallLastSignalId = signal.id;
 
-  if (signal.payload?.control === 'accepted') {
-    clearCompleteCallAnswerTimer();
-    setCompleteVideoStatus('Amanda atendeu. Preparando chamada...');
-    await prepareCompleteVideoConnection();
-    return;
-  }
-
   if (signal.payload?.control === 'declined') {
     await finishCompleteCallBeforeAnswer('recusada');
     return;
@@ -1084,6 +1077,7 @@ async function handleCompleteCallSignal(signal) {
 
   if (signal.tipo === 'answer' && completeCallPeer) {
     if (!completeCallPeer.remoteDescription) {
+      clearCompleteCallAnswerTimer();
       await completeCallPeer.setRemoteDescription(new RTCSessionDescription(signal.payload));
       await flushCompletePendingIce();
       setCompleteVideoStatus('Chamada conectada. Vídeo ao vivo ativo.');
@@ -1276,25 +1270,54 @@ async function validateCompleteCallToken(code) {
   });
 }
 
-async function prepareCompleteVideoConnection() {
+async function startCompleteVideoCall() {
+  const startButton = document.getElementById('complete-start-call');
   const localVideo = document.getElementById('complete-local-video');
   const remoteVideo = document.getElementById('complete-remote-video');
 
-  if (!completeCallSession || completeCallPreparing || completeCallConnected) {
+  if (!completeCallSession || completeCallStarted) {
     return;
   }
 
-  completeCallPreparing = true;
-  clearCompleteCallAnswerTimer();
+  const sessionId = completeCallSession.id;
 
   try {
-    await sendCompleteCallSignal('ice', {
-      control: 'preconnect',
-      started_at: new Date().toISOString(),
-      seconds: COMPLETE_CALL_PRECONNECT_SECONDS
-    });
+    completeCallStarted = true;
+    completeCallPreparing = true;
+
+    if (startButton) {
+      startButton.disabled = true;
+      startButton.textContent = 'Chamando...';
+    }
+
+    setCompleteCallStartedState(true);
+    updateCompleteCallControls();
+    setCompleteVideoStatus('Chamando Amanda... Aguarde ela atender.');
+    subscribeCompleteCallSignals();
+
+    await _supa
+      .from(COMPLETE_CALL_SESSIONS_TABLE)
+      .update({
+        status: 'chamando',
+        cliente_online: true,
+        atualizado_em: new Date().toISOString()
+      })
+      .eq('id', sessionId);
+
+    scheduleCompleteCallAnswerTimeout();
+    await runCompleteRingingDelay();
+
+    if (!completeCallSession || completeCallSession.id !== sessionId || completeCallEnding) {
+      return;
+    }
+
     setCompleteVideoStatus('Trocando chaves criptograficas...');
     await runCompletePreconnect();
+
+    if (!completeCallSession || completeCallSession.id !== sessionId || completeCallEnding) {
+      return;
+    }
+
     showCompleteMicHint();
     setCompleteVideoStatus('Abrindo sua camera sem audio...');
     completeCallLocalStream = await requestCompleteCameraStream('user');
@@ -1333,6 +1356,7 @@ async function prepareCompleteVideoConnection() {
 
       if (state === 'connected') {
         completeCallConnected = true;
+        clearCompleteCallAnswerTimer();
         setCompleteVideoStatus('Chamada conectada. Video ao vivo ativo.');
         startCompleteCallClock();
         setCompleteCallStartedState(true);
@@ -1348,6 +1372,7 @@ async function prepareCompleteVideoConnection() {
       }
     };
 
+    setCompleteVideoStatus('Chamando Amanda... Aguardando atendimento.');
     const offer = await completeCallPeer.createOffer({
       offerToReceiveVideo: true,
       offerToReceiveAudio: false
@@ -1355,67 +1380,16 @@ async function prepareCompleteVideoConnection() {
     await completeCallPeer.setLocalDescription(offer);
     await sendCompleteCallSignal('offer', offer);
 
-    trackEvent('iniciou_chamada_completa_video', {
-      alvo_tipo: 'chamada_completa',
-      alvo_titulo: completeCallSession.codigo
-    });
-  } catch (error) {
-    console.error('Erro na chamada completa:', error);
-    completeCallPreparing = false;
-    cleanupCompleteCallConnection();
-    setCompleteVideoStatus('Nao consegui abrir a camera ou conectar a chamada.');
-
-    const startButton = document.getElementById('complete-start-call');
-
-    if (startButton) {
-      startButton.disabled = false;
-      startButton.textContent = 'Tentar novamente';
-    }
-    setCompleteCallStartedState(false);
-  }
-}
-
-async function startCompleteVideoCall() {
-  const startButton = document.getElementById('complete-start-call');
-
-  if (!completeCallSession || completeCallStarted) {
-    return;
-  }
-
-  try {
-    completeCallStarted = true;
-    completeCallPreparing = false;
-
-    if (startButton) {
-      startButton.disabled = true;
-      startButton.textContent = 'Chamando...';
-    }
-
-    setCompleteCallStartedState(true);
-    updateCompleteCallControls();
-    setCompleteVideoStatus('Chamando Amanda... Aguarde ela atender.');
-    subscribeCompleteCallSignals();
-
-    await _supa
-      .from(COMPLETE_CALL_SESSIONS_TABLE)
-      .update({
-        status: 'chamando',
-        cliente_online: true,
-        atualizado_em: new Date().toISOString()
-      })
-      .eq('id', completeCallSession.id);
-
-    scheduleCompleteCallAnswerTimeout();
-
     trackEvent('chamou_amanda_chamada_completa', {
       alvo_tipo: 'chamada_completa',
       alvo_titulo: completeCallSession.codigo
     });
   } catch (error) {
-    console.error('Erro ao chamar Amanda:', error);
+    console.error('Erro na chamada completa:', error);
     completeCallStarted = false;
+    completeCallPreparing = false;
     cleanupCompleteCallConnection();
-    setCompleteVideoStatus('Nao consegui chamar Amanda agora. Tente novamente.');
+    setCompleteVideoStatus('Nao consegui abrir a camera ou conectar a chamada.');
 
     if (startButton) {
       startButton.disabled = false;

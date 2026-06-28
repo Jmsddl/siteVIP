@@ -1073,7 +1073,6 @@ async function waitForCompleteOffer(sessionId) {
     }
 
     if (data?.payload) {
-      completeAdminLastSignalId = Math.max(completeAdminLastSignalId, data.id);
       return data.payload;
     }
 
@@ -1158,8 +1157,6 @@ async function answerCompleteAdminCall(sessionId) {
     title.textContent = `${session.username || 'Cliente'} - ${session.codigo || ''}`;
   }
 
-  let acceptedSent = false;
-
   try {
     setCompleteAdminCallStatus('Abrindo camera de Amanda sem audio...');
     completeAdminLocalStream = await navigator.mediaDevices.getUserMedia({
@@ -1214,11 +1211,6 @@ async function answerCompleteAdminCall(sessionId) {
     };
 
     subscribeCompleteAdminSignals();
-    await sendCompleteAdminSignal('answer', {
-      control: 'accepted',
-      aceita_em: new Date().toISOString()
-    });
-    acceptedSent = true;
     await _supa
       .from(COMPLETE_CALL_SESSIONS_TABLE)
       .update({
@@ -1239,7 +1231,7 @@ async function answerCompleteAdminCall(sessionId) {
     console.error('Erro ao atender chamada completa:', error);
     await sendCompleteAdminSignalToSession(session.id, 'end', {
       control: 'declined',
-      motivo: acceptedSent ? 'erro_ao_conectar' : 'erro_camera',
+      motivo: 'erro_ao_atender',
       recusada_em: new Date().toISOString()
     });
     await _supa
