@@ -1497,28 +1497,9 @@ body.modal-open {
   background-repeat: no-repeat;
 }
 
-.complete-call-top em {
-  margin-top: 8px;
-  border-radius: 999px;
-  padding: 8px 13px;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.46);
-  backdrop-filter: blur(10px);
-  font-style: normal;
-  font-size: 0.86rem;
-  opacity: 0;
-  transform: translateY(8px);
-  transition: opacity 0.24s ease, transform 0.24s ease;
-}
-
-.complete-video-card.is-mic-hint-visible:not(.is-controls-hidden) .complete-call-top em,
 .complete-video-card.is-mic-hint-visible:not(.is-controls-hidden) [data-complete-toggle-mic] .sim-call-mic-hint {
   opacity: 1;
   transform: translate(-50%, 0) scale(1);
-}
-
-.complete-video-card.is-mic-hint-visible:not(.is-controls-hidden) .complete-call-top em {
-  transform: translateY(0);
 }
 
 .complete-call-bottom {

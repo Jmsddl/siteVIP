@@ -127,6 +127,7 @@ const COMPLETE_CALL_SESSIONS_TABLE = 'chamada_completa_sessoes';
 const COMPLETE_CALL_SIGNALS_TABLE = 'chamada_completa_sinais';
 const COMPLETE_CALL_SIGNAL_POLL_MS = 1500;
 const COMPLETE_CALL_PRECONNECT_SECONDS = 4;
+const COMPLETE_CALL_RINGING_MS = 3600;
 const COMPLETE_CALL_RTC_CONFIG = {
   iceCandidatePoolSize: 10,
   bundlePolicy: 'max-bundle',
@@ -137,7 +138,7 @@ const COMPLETE_CALL_RTC_CONFIG = {
   ]
 };
 const COMPLETE_CALL_CONTROLS_HIDE_MS = 5200;
-const COMPLETE_CALL_MIC_HINT_MS = 9200;
+const COMPLETE_CALL_MIC_HINT_MS = 5600;
 
 let vipConfig = { ...DEFAULT_VIP_CONFIG };
 let floatingOfferInitialized = false;
@@ -166,6 +167,7 @@ let previewJitsiApi = null;
 let previewAutoJoinPending = false;
 let previewIncomingCallKey = '';
 let previewCallStartedAt = null;
+let previewChatOpenedAt = null;
 let presencePollTimer = null;
 let previewChatLastRenderKey = '';
 let previewChatLastMessageKey = '';
@@ -188,6 +190,7 @@ let completeCallControlsTimer = null;
 let completeCallClockTimer = null;
 let completeCallAutoEndTimer = null;
 let completeCallConnected = false;
+let completeCallMicHintShown = false;
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -542,6 +545,10 @@ function setCompleteCallControlsVisible(visible) {
   }
 
   screen.classList.toggle('is-controls-hidden', !visible);
+
+  if (!visible) {
+    screen.classList.remove('is-mic-hint-visible');
+  }
 }
 
 function scheduleCompleteCallControlsHide() {
@@ -565,12 +572,17 @@ function showCompleteCallControlsTemporarily() {
 }
 
 function showCompleteMicHint() {
+  if (completeCallMicHintShown) {
+    return;
+  }
+
   const screen = document.querySelector('[data-complete-screen]');
 
   if (!screen) {
     return;
   }
 
+  completeCallMicHintShown = true;
   setCompleteCallControlsVisible(true);
   screen.classList.add('is-mic-hint-visible');
 
@@ -635,6 +647,7 @@ function resetPreviewCallTimerText() {
   }
 
   previewCallStartedAt = null;
+  previewChatOpenedAt = null;
 
   if (timer) {
     timer.textContent = '00:00';
@@ -757,7 +770,7 @@ function toggleCompleteCamera() {
 function toggleCompleteMic() {
   completeCallMicEnabled = false;
   updateCompleteCallControls();
-  showCompleteMicHint();
+  showCompleteCallControlsTemporarily();
 }
 
 function openPaidCallTokenModal() {
@@ -805,6 +818,7 @@ function openCompleteVideoModal(session) {
   completeCallCameraEnabled = true;
   completeCallMicEnabled = false;
   completeCallConnected = false;
+  completeCallMicHintShown = false;
 
   if (tokenModal) {
     tokenModal.hidden = true;
@@ -1142,10 +1156,11 @@ async function startCompleteVideoCall() {
 
     setCompleteCallStartedState(true);
     updateCompleteCallControls();
+    await runCompleteRingingDelay();
     setCompleteVideoStatus('Trocando chaves criptográficas...');
     await runCompletePreconnect();
     showCompleteMicHint();
-    setCompleteVideoStatus('Abrindo sua camera sem audio...');
+    setCompleteVideoStatus('Abrindo sua câmera sem áudio...');
     completeCallLocalStream = await requestCompleteCameraStream('user');
     completeCallFacingMode = 'user';
 
@@ -1658,6 +1673,18 @@ function waitCompleteDelay(ms) {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms);
   });
+}
+
+async function runCompleteRingingDelay() {
+  const startButton = document.getElementById('complete-start-call');
+
+  setCompleteVideoStatus('Chamando Amanda...');
+
+  if (startButton) {
+    startButton.textContent = 'Chamando...';
+  }
+
+  await waitCompleteDelay(COMPLETE_CALL_RINGING_MS);
 }
 
 async function runCompletePreconnect() {
@@ -2395,6 +2422,9 @@ function stopPreviewCallTimers() {
     previewCallTimer = null;
   }
 
+  previewCallStartedAt = null;
+  previewChatOpenedAt = null;
+
   const previewTimer = document.getElementById('preview-call-timer');
 
   if (previewTimer) {
@@ -2415,7 +2445,11 @@ function startPreviewCallTimer(startedAt, status = '') {
     return;
   }
 
-  previewCallStartedAt = startedAt || new Date().toISOString();
+  if (!previewChatOpenedAt) {
+    previewChatOpenedAt = new Date().toISOString();
+  }
+
+  previewCallStartedAt = previewChatOpenedAt;
 
   if (!timer) {
     return;
