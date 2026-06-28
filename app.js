@@ -1070,14 +1070,14 @@ async function handleCompleteCallSignal(signal) {
 
   completeCallLastSignalId = signal.id;
 
-  if (signal.tipo === 'accepted') {
+  if (signal.payload?.control === 'accepted') {
     clearCompleteCallAnswerTimer();
     setCompleteVideoStatus('Amanda atendeu. Preparando chamada...');
     await prepareCompleteVideoConnection();
     return;
   }
 
-  if (signal.tipo === 'declined') {
+  if (signal.payload?.control === 'declined') {
     await finishCompleteCallBeforeAnswer('recusada');
     return;
   }
@@ -1288,7 +1288,8 @@ async function prepareCompleteVideoConnection() {
   clearCompleteCallAnswerTimer();
 
   try {
-    await sendCompleteCallSignal('preconnect', {
+    await sendCompleteCallSignal('ice', {
+      control: 'preconnect',
       started_at: new Date().toISOString(),
       seconds: COMPLETE_CALL_PRECONNECT_SECONDS
     });

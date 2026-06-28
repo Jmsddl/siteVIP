@@ -973,7 +973,7 @@ async function handleCompleteAdminSignal(signal) {
     return;
   }
 
-  if (signal.tipo === 'preconnect') {
+  if (signal.payload?.control === 'preconnect') {
     await ensureCompleteAdminPreconnect();
     return;
   }
@@ -1091,7 +1091,8 @@ async function declineCompleteAdminCall(sessionId) {
     return;
   }
 
-  await sendCompleteAdminSignalToSession(session.id, 'declined', {
+  await sendCompleteAdminSignalToSession(session.id, 'end', {
+    control: 'declined',
     motivo: 'recusada',
     recusada_em: new Date().toISOString()
   });
@@ -1213,7 +1214,8 @@ async function answerCompleteAdminCall(sessionId) {
     };
 
     subscribeCompleteAdminSignals();
-    await sendCompleteAdminSignal('accepted', {
+    await sendCompleteAdminSignal('answer', {
+      control: 'accepted',
       aceita_em: new Date().toISOString()
     });
     acceptedSent = true;
@@ -1235,7 +1237,8 @@ async function answerCompleteAdminCall(sessionId) {
     await acceptCompleteAdminOffer(offer);
   } catch (error) {
     console.error('Erro ao atender chamada completa:', error);
-    await sendCompleteAdminSignalToSession(session.id, 'declined', {
+    await sendCompleteAdminSignalToSession(session.id, 'end', {
+      control: 'declined',
       motivo: acceptedSent ? 'erro_ao_conectar' : 'erro_camera',
       recusada_em: new Date().toISOString()
     });
