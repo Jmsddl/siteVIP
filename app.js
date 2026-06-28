@@ -128,6 +128,7 @@ const COMPLETE_CALL_SIGNALS_TABLE = 'chamada_completa_sinais';
 const COMPLETE_CALL_SIGNAL_POLL_MS = 1500;
 const COMPLETE_CALL_PRECONNECT_SECONDS = 4;
 const COMPLETE_CALL_RINGING_MS = 3600;
+const COMPLETE_CALL_ANSWER_TIMEOUT_MS = 60000;
 const COMPLETE_CALL_RTC_CONFIG = {
   iceCandidatePoolSize: 10,
   bundlePolicy: 'max-bundle',
@@ -191,6 +192,8 @@ let completeCallClockTimer = null;
 let completeCallAutoEndTimer = null;
 let completeCallConnected = false;
 let completeCallMicHintShown = false;
+let completeCallAnswerTimer = null;
+let completeCallPreparing = false;
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -686,6 +689,80 @@ function resetCompleteCallClock() {
   }
 }
 
+function clearCompleteCallAnswerTimer() {
+  if (completeCallAnswerTimer) {
+    window.clearTimeout(completeCallAnswerTimer);
+    completeCallAnswerTimer = null;
+  }
+}
+
+function getCompleteCallFailureMessage(reason) {
+  if (reason === 'recusada') {
+    return 'Amanda recusou a chamada. Pergunte ela no chat e tente novamente com outro codigo.';
+  }
+
+  return 'Amanda nao atendeu a chamada. Pergunte ela no chat e tente novamente com outro codigo.';
+}
+
+async function markCompleteCallCancelled(reason) {
+  const session = completeCallSession;
+
+  if (!session?.id || typeof _supa === 'undefined' || !_supa) {
+    return;
+  }
+
+  await _supa
+    .from(COMPLETE_CALL_SESSIONS_TABLE)
+    .update({
+      status: 'cancelada',
+      cliente_online: false,
+      finalizada_em: new Date().toISOString(),
+      atualizado_em: new Date().toISOString()
+    })
+    .eq('id', session.id);
+
+  if (session.token_id) {
+    await _supa
+      .from(COMPLETE_CALL_TOKENS_TABLE)
+      .update({
+        status: 'usado',
+        atualizado_em: new Date().toISOString()
+      })
+      .eq('id', session.token_id)
+      .in('status', ['novo', 'em_uso']);
+  }
+}
+
+async function finishCompleteCallBeforeAnswer(reason = 'nao_atendeu') {
+  if (completeCallConnected) {
+    return;
+  }
+
+  clearCompleteCallAnswerTimer();
+  await markCompleteCallCancelled(reason);
+  cleanupCompleteCallConnection();
+  completeCallSession = null;
+  completeCallPendingIce = [];
+  completeCallEnding = false;
+  completeCallPreparing = false;
+
+  const startButton = document.getElementById('complete-start-call');
+
+  if (startButton) {
+    startButton.disabled = true;
+    startButton.textContent = 'Chamada encerrada';
+  }
+
+  setCompleteVideoStatus(getCompleteCallFailureMessage(reason));
+}
+
+function scheduleCompleteCallAnswerTimeout() {
+  clearCompleteCallAnswerTimer();
+  completeCallAnswerTimer = window.setTimeout(() => {
+    finishCompleteCallBeforeAnswer('nao_atendeu');
+  }, COMPLETE_CALL_ANSWER_TIMEOUT_MS);
+}
+
 function resetPreviewCallTimerText() {
   const timer = document.getElementById('preview-call-timer');
 
@@ -917,6 +994,8 @@ function cleanupCompleteCallConnection() {
     preconnect.hidden = true;
   }
 
+  clearCompleteCallAnswerTimer();
+
   if (completeCallSignalPollTimer) {
     window.clearInterval(completeCallSignalPollTimer);
     completeCallSignalPollTimer = null;
@@ -942,6 +1021,7 @@ function cleanupCompleteCallConnection() {
   completeCallPeer = null;
   completeCallStarted = false;
   completeCallConnected = false;
+  completeCallPreparing = false;
   resetCompleteCallClock();
   setCompleteCallStartedState(false);
   stopCompleteVideoStreams();
@@ -989,6 +1069,18 @@ async function handleCompleteCallSignal(signal) {
   }
 
   completeCallLastSignalId = signal.id;
+
+  if (signal.tipo === 'accepted') {
+    clearCompleteCallAnswerTimer();
+    setCompleteVideoStatus('Amanda atendeu. Preparando chamada...');
+    await prepareCompleteVideoConnection();
+    return;
+  }
+
+  if (signal.tipo === 'declined') {
+    await finishCompleteCallBeforeAnswer('recusada');
+    return;
+  }
 
   if (signal.tipo === 'answer' && completeCallPeer) {
     if (!completeCallPeer.remoteDescription) {
@@ -1184,34 +1276,26 @@ async function validateCompleteCallToken(code) {
   });
 }
 
-async function startCompleteVideoCall() {
-  const startButton = document.getElementById('complete-start-call');
+async function prepareCompleteVideoConnection() {
   const localVideo = document.getElementById('complete-local-video');
   const remoteVideo = document.getElementById('complete-remote-video');
 
-  if (!completeCallSession || completeCallStarted) {
+  if (!completeCallSession || completeCallPreparing || completeCallConnected) {
     return;
   }
 
+  completeCallPreparing = true;
+  clearCompleteCallAnswerTimer();
+
   try {
-    completeCallStarted = true;
-
-    if (startButton) {
-      startButton.disabled = true;
-      startButton.textContent = 'Conectando...';
-    }
-
-    setCompleteCallStartedState(true);
-    updateCompleteCallControls();
-    await runCompleteRingingDelay();
     await sendCompleteCallSignal('preconnect', {
       started_at: new Date().toISOString(),
       seconds: COMPLETE_CALL_PRECONNECT_SECONDS
     });
-    setCompleteVideoStatus('Trocando chaves criptográficas...');
+    setCompleteVideoStatus('Trocando chaves criptograficas...');
     await runCompletePreconnect();
     showCompleteMicHint();
-    setCompleteVideoStatus('Abrindo sua câmera sem áudio...');
+    setCompleteVideoStatus('Abrindo sua camera sem audio...');
     completeCallLocalStream = await requestCompleteCameraStream('user');
     completeCallFacingMode = 'user';
 
@@ -1248,7 +1332,7 @@ async function startCompleteVideoCall() {
 
       if (state === 'connected') {
         completeCallConnected = true;
-        setCompleteVideoStatus('Chamada conectada. Vídeo ao vivo ativo.');
+        setCompleteVideoStatus('Chamada conectada. Video ao vivo ativo.');
         startCompleteCallClock();
         setCompleteCallStartedState(true);
       }
@@ -1263,15 +1347,53 @@ async function startCompleteVideoCall() {
       }
     };
 
-    subscribeCompleteCallSignals();
-    setCompleteVideoStatus('Chamando Amanda...');
-
     const offer = await completeCallPeer.createOffer({
       offerToReceiveVideo: true,
       offerToReceiveAudio: false
     });
     await completeCallPeer.setLocalDescription(offer);
     await sendCompleteCallSignal('offer', offer);
+
+    trackEvent('iniciou_chamada_completa_video', {
+      alvo_tipo: 'chamada_completa',
+      alvo_titulo: completeCallSession.codigo
+    });
+  } catch (error) {
+    console.error('Erro na chamada completa:', error);
+    completeCallPreparing = false;
+    cleanupCompleteCallConnection();
+    setCompleteVideoStatus('Nao consegui abrir a camera ou conectar a chamada.');
+
+    const startButton = document.getElementById('complete-start-call');
+
+    if (startButton) {
+      startButton.disabled = false;
+      startButton.textContent = 'Tentar novamente';
+    }
+    setCompleteCallStartedState(false);
+  }
+}
+
+async function startCompleteVideoCall() {
+  const startButton = document.getElementById('complete-start-call');
+
+  if (!completeCallSession || completeCallStarted) {
+    return;
+  }
+
+  try {
+    completeCallStarted = true;
+    completeCallPreparing = false;
+
+    if (startButton) {
+      startButton.disabled = true;
+      startButton.textContent = 'Chamando...';
+    }
+
+    setCompleteCallStartedState(true);
+    updateCompleteCallControls();
+    setCompleteVideoStatus('Chamando Amanda... Aguarde ela atender.');
+    subscribeCompleteCallSignals();
 
     await _supa
       .from(COMPLETE_CALL_SESSIONS_TABLE)
@@ -1282,15 +1404,17 @@ async function startCompleteVideoCall() {
       })
       .eq('id', completeCallSession.id);
 
-    trackEvent('iniciou_chamada_completa_video', {
+    scheduleCompleteCallAnswerTimeout();
+
+    trackEvent('chamou_amanda_chamada_completa', {
       alvo_tipo: 'chamada_completa',
       alvo_titulo: completeCallSession.codigo
     });
   } catch (error) {
-    console.error('Erro na chamada completa:', error);
+    console.error('Erro ao chamar Amanda:', error);
     completeCallStarted = false;
     cleanupCompleteCallConnection();
-    setCompleteVideoStatus('Nao consegui abrir a camera ou conectar a chamada.');
+    setCompleteVideoStatus('Nao consegui chamar Amanda agora. Tente novamente.');
 
     if (startButton) {
       startButton.disabled = false;
@@ -1299,7 +1423,6 @@ async function startCompleteVideoCall() {
     setCompleteCallStartedState(false);
   }
 }
-
 async function endCompleteVideoCall(origin = 'cliente') {
   if (completeCallEnding) {
     return;

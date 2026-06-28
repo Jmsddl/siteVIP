@@ -1640,6 +1640,17 @@ body.modal-open {
   font-size: 0.8rem;
 }
 
+.complete-admin-call-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.complete-admin-call-actions button {
+  min-width: 96px;
+}
+
 .call-enter-button.is-ready {
   box-shadow: 0 16px 40px rgba(233, 30, 140, 0.38);
 }

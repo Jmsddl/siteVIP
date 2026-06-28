@@ -609,7 +609,8 @@ function renderCompleteAdminCalls() {
 
   container.innerHTML = completeAdminCalls.map((call) => {
     const statusClass = String(call.status || 'aguardando').replace(/[^a-z0-9_-]/gi, '');
-    const canAnswer = call.status === 'chamando' || call.status === 'aguardando' || call.status === 'em_chamada';
+    const canAnswer = call.status === 'chamando' || call.status === 'em_chamada';
+    const canDecline = call.status === 'chamando';
 
     return `
       <article class="complete-admin-call-row">
@@ -622,14 +623,24 @@ function renderCompleteAdminCalls() {
             · ${escapeRoom(formatRoomDate(call.criado_em))}
           </span>
         </div>
-        <button
-          class="btn-primary"
-          type="button"
-          onclick="answerCompleteAdminCall('${escapeRoom(call.id)}')"
-          ${canAnswer ? '' : 'disabled'}
-        >
-          ${call.status === 'em_chamada' ? 'Abrir chamada' : 'Atender chamada'}
-        </button>
+        <div class="complete-admin-call-actions">
+          <button
+            class="btn-primary"
+            type="button"
+            onclick="answerCompleteAdminCall('${escapeRoom(call.id)}')"
+            ${canAnswer ? '' : 'disabled'}
+          >
+            ${call.status === 'em_chamada' ? 'Abrir chamada' : 'Atender'}
+          </button>
+          <button
+            class="btn-secondary"
+            type="button"
+            onclick="declineCompleteAdminCall('${escapeRoom(call.id)}')"
+            ${canDecline ? '' : 'disabled'}
+          >
+            Recusar
+          </button>
+        </div>
       </article>
     `;
   }).join('');
@@ -877,15 +888,15 @@ function cleanupCompleteAdminCall() {
   stopCompleteAdminStreams();
 }
 
-async function sendCompleteAdminSignal(tipo, payload = {}) {
-  if (!completeAdminSession?.id || typeof _supa === 'undefined' || !_supa) {
+async function sendCompleteAdminSignalToSession(sessionId, tipo, payload = {}) {
+  if (!sessionId || typeof _supa === 'undefined' || !_supa) {
     return;
   }
 
   const { error } = await _supa
     .from(COMPLETE_CALL_SIGNALS_TABLE)
     .insert({
-      sessao_id: completeAdminSession.id,
+      sessao_id: sessionId,
       autor: 'admin',
       tipo,
       payload
@@ -894,6 +905,10 @@ async function sendCompleteAdminSignal(tipo, payload = {}) {
   if (error) {
     console.warn('Nao consegui enviar sinal admin:', error.message || error);
   }
+}
+
+async function sendCompleteAdminSignal(tipo, payload = {}) {
+  return sendCompleteAdminSignalToSession(completeAdminSession?.id, tipo, payload);
 }
 
 async function flushCompleteAdminPendingIce() {
@@ -1042,7 +1057,7 @@ function subscribeCompleteAdminSignals() {
 }
 
 async function waitForCompleteOffer(sessionId) {
-  for (let attempt = 0; attempt < 18; attempt += 1) {
+  for (let attempt = 0; attempt < 45; attempt += 1) {
     const { data, error } = await _supa
       .from(COMPLETE_CALL_SIGNALS_TABLE)
       .select('id, payload')
@@ -1066,6 +1081,48 @@ async function waitForCompleteOffer(sessionId) {
   }
 
   return null;
+}
+
+async function declineCompleteAdminCall(sessionId) {
+  const session = completeAdminCalls.find((call) => call.id === sessionId) || { id: sessionId };
+
+  if (!session?.id || typeof _supa === 'undefined' || !_supa) {
+    setRoomStatus('Nao consegui recusar a chamada agora.', true);
+    return;
+  }
+
+  await sendCompleteAdminSignalToSession(session.id, 'declined', {
+    motivo: 'recusada',
+    recusada_em: new Date().toISOString()
+  });
+
+  await _supa
+    .from(COMPLETE_CALL_SESSIONS_TABLE)
+    .update({
+      status: 'cancelada',
+      admin_online: false,
+      finalizada_em: new Date().toISOString(),
+      atualizado_em: new Date().toISOString()
+    })
+    .eq('id', session.id);
+
+  if (session.token_id) {
+    await _supa
+      .from(COMPLETE_CALL_TOKENS_TABLE)
+      .update({
+        status: 'usado',
+        atualizado_em: new Date().toISOString()
+      })
+      .eq('id', session.token_id)
+      .in('status', ['novo', 'em_uso']);
+  }
+
+  if (roomIncomingCallId === session.id) {
+    hideIncomingCallPopup();
+  }
+
+  setRoomStatus('Chamada recusada. O cliente foi avisado.');
+  loadCompleteAdminCalls();
 }
 
 async function answerCompleteAdminCall(sessionId) {
@@ -1099,6 +1156,8 @@ async function answerCompleteAdminCall(sessionId) {
   if (title) {
     title.textContent = `${session.username || 'Cliente'} - ${session.codigo || ''}`;
   }
+
+  let acceptedSent = false;
 
   try {
     setCompleteAdminCallStatus('Abrindo camera de Amanda sem audio...');
@@ -1154,6 +1213,17 @@ async function answerCompleteAdminCall(sessionId) {
     };
 
     subscribeCompleteAdminSignals();
+    await sendCompleteAdminSignal('accepted', {
+      aceita_em: new Date().toISOString()
+    });
+    acceptedSent = true;
+    await _supa
+      .from(COMPLETE_CALL_SESSIONS_TABLE)
+      .update({
+        admin_online: true,
+        atualizado_em: new Date().toISOString()
+      })
+      .eq('id', session.id);
     setCompleteAdminCallStatus('Aguardando o cliente clicar em chamar...');
     const offer = await waitForCompleteOffer(session.id);
 
@@ -1165,6 +1235,29 @@ async function answerCompleteAdminCall(sessionId) {
     await acceptCompleteAdminOffer(offer);
   } catch (error) {
     console.error('Erro ao atender chamada completa:', error);
+    await sendCompleteAdminSignalToSession(session.id, 'declined', {
+      motivo: acceptedSent ? 'erro_ao_conectar' : 'erro_camera',
+      recusada_em: new Date().toISOString()
+    });
+    await _supa
+      .from(COMPLETE_CALL_SESSIONS_TABLE)
+      .update({
+        status: 'cancelada',
+        admin_online: false,
+        finalizada_em: new Date().toISOString(),
+        atualizado_em: new Date().toISOString()
+      })
+      .eq('id', session.id);
+    if (session.token_id) {
+      await _supa
+        .from(COMPLETE_CALL_TOKENS_TABLE)
+        .update({
+          status: 'usado',
+          atualizado_em: new Date().toISOString()
+        })
+        .eq('id', session.token_id)
+        .in('status', ['novo', 'em_uso']);
+    }
     setCompleteAdminCallStatus('Nao consegui atender. Confira permissao da camera e tente novamente.');
   }
 }
