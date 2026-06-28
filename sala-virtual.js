@@ -66,6 +66,7 @@ let completeAdminEnding = false;
 let completeAdminControlsTimer = null;
 let completeAdminClockTimer = null;
 let completeAdminAutoEndTimer = null;
+let completeAdminPreconnectPromise = null;
 
 function getRoomUser() {
   try {
@@ -702,6 +703,17 @@ async function runCompleteAdminPreconnect() {
   overlay.hidden = true;
 }
 
+function ensureCompleteAdminPreconnect() {
+  if (!completeAdminPreconnectPromise) {
+    setCompleteAdminCallStatus('Trocando chaves criptograficas...');
+    completeAdminPreconnectPromise = runCompleteAdminPreconnect().finally(() => {
+      completeAdminPreconnectPromise = null;
+    });
+  }
+
+  return completeAdminPreconnectPromise;
+}
+
 function formatCompleteAdminClock(seconds) {
   const safeSeconds = Math.max(0, Number(seconds) || 0);
   const minutes = String(Math.floor(safeSeconds / 60)).padStart(2, '0');
@@ -835,6 +847,8 @@ function cleanupCompleteAdminCall() {
     preconnect.hidden = true;
   }
 
+  completeAdminPreconnectPromise = null;
+
   if (completeAdminSignalPollTimer) {
     window.clearInterval(completeAdminSignalPollTimer);
     completeAdminSignalPollTimer = null;
@@ -904,12 +918,12 @@ async function acceptCompleteAdminOffer(offer) {
     return;
   }
 
+  await ensureCompleteAdminPreconnect();
   await completeAdminPeer.setRemoteDescription(new RTCSessionDescription(offer));
   await flushCompleteAdminPendingIce();
   const answer = await completeAdminPeer.createAnswer();
   await completeAdminPeer.setLocalDescription(answer);
   await sendCompleteAdminSignal('answer', answer);
-  startCompleteAdminClock();
   setCompleteAdminStartedState(true);
   showCompleteAdminControlsTemporarily();
 
@@ -941,6 +955,11 @@ async function handleCompleteAdminSignal(signal) {
       console.warn('Nao consegui responder oferta do cliente:', error);
       setCompleteAdminCallStatus('Nao consegui responder a chamada. Tente novamente.');
     }
+    return;
+  }
+
+  if (signal.tipo === 'preconnect') {
+    await ensureCompleteAdminPreconnect();
     return;
   }
 
@@ -1066,6 +1085,7 @@ async function answerCompleteAdminCall(sessionId) {
   completeAdminLastSignalId = 0;
   completeAdminPendingIce = [];
   completeAdminEnding = false;
+  completeAdminPreconnectPromise = null;
 
   if (modal) {
     modal.hidden = false;
@@ -1081,8 +1101,6 @@ async function answerCompleteAdminCall(sessionId) {
   }
 
   try {
-    setCompleteAdminCallStatus('Trocando chaves criptograficas...');
-    await runCompleteAdminPreconnect();
     setCompleteAdminCallStatus('Abrindo camera de Amanda sem audio...');
     completeAdminLocalStream = await navigator.mediaDevices.getUserMedia({
       video: getCompleteAdminVideoConstraints(),
@@ -1136,7 +1154,7 @@ async function answerCompleteAdminCall(sessionId) {
     };
 
     subscribeCompleteAdminSignals();
-    setCompleteAdminCallStatus('Aguardando sinal do cliente...');
+    setCompleteAdminCallStatus('Aguardando o cliente clicar em chamar...');
     const offer = await waitForCompleteOffer(session.id);
 
     if (!offer) {

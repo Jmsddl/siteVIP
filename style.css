@@ -2454,6 +2454,24 @@ body.modal-open {
   font-size: 0.7rem;
 }
 
+.telegram-copy-code {
+  justify-self: start;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  padding: 7px 11px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.telegram-copy-code.is-copied {
+  border-color: rgba(68, 255, 164, 0.45);
+  background: rgba(68, 255, 164, 0.18);
+}
+
 .telegram-message.is-mine {
   align-self: flex-end;
   border-bottom-right-radius: 5px;

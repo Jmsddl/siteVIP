@@ -508,6 +508,54 @@ function normalizeCompleteCallCode(value) {
     .replace(/\s+/g, '');
 }
 
+function extractCompleteCallCode(value) {
+  const match = String(value || '').toUpperCase().match(/\bVIP-[A-Z0-9]{4,12}\b/);
+
+  return match ? match[0] : '';
+}
+
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const input = document.createElement('textarea');
+  input.value = text;
+  input.setAttribute('readonly', '');
+  input.style.position = 'fixed';
+  input.style.opacity = '0';
+  document.body.appendChild(input);
+  input.select();
+  document.execCommand('copy');
+  input.remove();
+}
+
+async function copyCompleteCodeFromChat(button) {
+  const code = button?.dataset?.copyCode || '';
+
+  if (!code) {
+    return;
+  }
+
+  try {
+    await copyTextToClipboard(code);
+    button.textContent = 'Copiado';
+    button.classList.add('is-copied');
+    window.setTimeout(() => {
+      if (!button.isConnected) {
+        return;
+      }
+
+      button.textContent = 'Copiar código';
+      button.classList.remove('is-copied');
+    }, 1800);
+  } catch (error) {
+    console.warn('Nao consegui copiar codigo:', error);
+    button.textContent = code;
+  }
+}
+
 function setCompleteTokenStatus(message, type = '') {
   const status = document.getElementById('complete-token-status');
 
@@ -947,7 +995,6 @@ async function handleCompleteCallSignal(signal) {
       await completeCallPeer.setRemoteDescription(new RTCSessionDescription(signal.payload));
       await flushCompletePendingIce();
       setCompleteVideoStatus('Chamada conectada. Vídeo ao vivo ativo.');
-      startCompleteCallClock();
       setCompleteCallStartedState(true);
     }
     return;
@@ -1157,6 +1204,10 @@ async function startCompleteVideoCall() {
     setCompleteCallStartedState(true);
     updateCompleteCallControls();
     await runCompleteRingingDelay();
+    await sendCompleteCallSignal('preconnect', {
+      started_at: new Date().toISOString(),
+      seconds: COMPLETE_CALL_PRECONNECT_SECONDS
+    });
     setCompleteVideoStatus('Trocando chaves criptográficas...');
     await runCompletePreconnect();
     showCompleteMicHint();
@@ -2440,11 +2491,6 @@ function stopPreviewCallTimers() {
 function startPreviewCallTimer(startedAt, status = '') {
   const timer = document.getElementById('preview-call-timer');
 
-  if (['finalizado', 'cancelado'].includes(status)) {
-    resetPreviewCallTimerText();
-    return;
-  }
-
   if (!previewChatOpenedAt) {
     previewChatOpenedAt = new Date().toISOString();
   }
@@ -2920,6 +2966,10 @@ function renderPreviewChatMessages(messages) {
       && !Number.isNaN(createdAtMs)
       && createdAtMs <= adminReadAtMs;
     const meta = [time, wasRead ? 'Lida' : ''].filter(Boolean).join(' · ');
+    const completeCode = extractCompleteCallCode(message.texto);
+    const copyCodeButton = completeCode
+      ? `<button class="telegram-copy-code" type="button" data-copy-code="${escapeHtml(completeCode)}">Copiar codigo</button>`
+      : '';
 
     if (system) {
       return `
@@ -2932,6 +2982,7 @@ function renderPreviewChatMessages(messages) {
     return `
       <div class="telegram-message ${mine ? 'is-mine' : 'is-admin'}">
         <span>${escapeHtml(message.texto || '')}</span>
+        ${copyCodeButton}
         <small>${escapeHtml(meta)}</small>
       </div>
     `;
@@ -3455,6 +3506,7 @@ async function openPreviewCallRoom() {
   modal.hidden = false;
   hideFloatingOfferPanel();
   stopPreviewCallTimers();
+  startPreviewCallTimer();
   previewChatLastRenderKey = '';
   setPreviewChatStatus('Abrindo conversa...');
   setPreviewCallEnterEnabled(false, 'Preparando...');
@@ -3763,6 +3815,21 @@ function setupCallHandlers() {
   completeMicButton?.addEventListener('click', toggleCompleteMic);
   completeEndButton?.addEventListener('click', () => endCompleteVideoCall('cliente'));
   bindCompleteCallControlReveal();
+
+  if (document.body && document.body.dataset.copyCodeBound !== 'true') {
+    document.body.dataset.copyCodeBound = 'true';
+    document.addEventListener('click', (event) => {
+      if (!(event.target instanceof Element)) {
+        return;
+      }
+
+      const button = event.target.closest('[data-copy-code]');
+
+      if (button) {
+        copyCompleteCodeFromChat(button);
+      }
+    });
+  }
 }
 
 function setAmandaPresence(isOnline) {
