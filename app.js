@@ -126,6 +126,7 @@ const COMPLETE_CALL_TOKENS_TABLE = 'chamada_completa_tokens';
 const COMPLETE_CALL_SESSIONS_TABLE = 'chamada_completa_sessoes';
 const COMPLETE_CALL_SIGNALS_TABLE = 'chamada_completa_sinais';
 const COMPLETE_CALL_SIGNAL_POLL_MS = 1500;
+const COMPLETE_CALL_PRECONNECT_SECONDS = 4;
 const COMPLETE_CALL_RTC_CONFIG = {
   iceCandidatePoolSize: 10,
   bundlePolicy: 'max-bundle',
@@ -136,6 +137,7 @@ const COMPLETE_CALL_RTC_CONFIG = {
   ]
 };
 const COMPLETE_CALL_CONTROLS_HIDE_MS = 5200;
+const COMPLETE_CALL_MIC_HINT_MS = 9200;
 
 let vipConfig = { ...DEFAULT_VIP_CONFIG };
 let floatingOfferInitialized = false;
@@ -562,6 +564,27 @@ function showCompleteCallControlsTemporarily() {
   scheduleCompleteCallControlsHide();
 }
 
+function showCompleteMicHint() {
+  const screen = document.querySelector('[data-complete-screen]');
+
+  if (!screen) {
+    return;
+  }
+
+  setCompleteCallControlsVisible(true);
+  screen.classList.add('is-mic-hint-visible');
+
+  if (completeCallControlsTimer) {
+    window.clearTimeout(completeCallControlsTimer);
+  }
+
+  completeCallControlsTimer = window.setTimeout(() => {
+    completeCallControlsTimer = null;
+    screen.classList.remove('is-mic-hint-visible');
+    setCompleteCallControlsVisible(false);
+  }, COMPLETE_CALL_MIC_HINT_MS);
+}
+
 function updateCompleteCallControls() {
   const cameraButton = document.querySelector('[data-complete-toggle-camera]');
   const micButton = document.querySelector('[data-complete-toggle-mic]');
@@ -600,6 +623,21 @@ function resetCompleteCallClock() {
 
   if (clock) {
     clock.textContent = '00:00';
+  }
+}
+
+function resetPreviewCallTimerText() {
+  const timer = document.getElementById('preview-call-timer');
+
+  if (previewCallTimer) {
+    window.clearInterval(previewCallTimer);
+    previewCallTimer = null;
+  }
+
+  previewCallStartedAt = null;
+
+  if (timer) {
+    timer.textContent = '00:00';
   }
 }
 
@@ -719,12 +757,7 @@ function toggleCompleteCamera() {
 function toggleCompleteMic() {
   completeCallMicEnabled = false;
   updateCompleteCallControls();
-  showCompleteCallControlsTemporarily();
-
-  window.setTimeout(() => {
-    const screen = document.querySelector('[data-complete-screen]');
-    screen?.classList.remove('is-mic-hint-visible');
-  }, 4600);
+  showCompleteMicHint();
 }
 
 function openPaidCallTokenModal() {
@@ -816,6 +849,12 @@ function stopCompleteVideoStreams() {
 }
 
 function cleanupCompleteCallConnection() {
+  const preconnect = document.getElementById('complete-preconnect');
+
+  if (preconnect) {
+    preconnect.hidden = true;
+  }
+
   if (completeCallSignalPollTimer) {
     window.clearInterval(completeCallSignalPollTimer);
     completeCallSignalPollTimer = null;
@@ -1103,11 +1142,9 @@ async function startCompleteVideoCall() {
 
     setCompleteCallStartedState(true);
     updateCompleteCallControls();
-    const completeScreen = document.querySelector('[data-complete-screen]');
-    completeScreen?.classList.add('is-mic-hint-visible');
-    window.setTimeout(() => {
-      completeScreen?.classList.remove('is-mic-hint-visible');
-    }, 5600);
+    setCompleteVideoStatus('Trocando chaves criptográficas...');
+    await runCompletePreconnect();
+    showCompleteMicHint();
     setCompleteVideoStatus('Abrindo sua camera sem audio...');
     completeCallLocalStream = await requestCompleteCameraStream('user');
     completeCallFacingMode = 'user';
@@ -1615,6 +1652,33 @@ function waitPreviewDelay(ms) {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms);
   });
+}
+
+function waitCompleteDelay(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+async function runCompletePreconnect() {
+  const overlay = document.getElementById('complete-preconnect');
+  const count = document.getElementById('complete-preconnect-count');
+
+  if (!overlay) {
+    return;
+  }
+
+  overlay.hidden = false;
+
+  for (let value = COMPLETE_CALL_PRECONNECT_SECONDS; value >= 1; value -= 1) {
+    if (count) {
+      count.textContent = String(value);
+    }
+
+    await waitCompleteDelay(1000);
+  }
+
+  overlay.hidden = true;
 }
 
 async function registerPreviewCameraState(status, message) {
@@ -2331,14 +2395,25 @@ function stopPreviewCallTimers() {
     previewCallTimer = null;
   }
 
+  const previewTimer = document.getElementById('preview-call-timer');
+
+  if (previewTimer) {
+    previewTimer.textContent = '00:00';
+  }
+
   if (previewCallRingTimer) {
     window.clearTimeout(previewCallRingTimer);
     previewCallRingTimer = null;
   }
 }
 
-function startPreviewCallTimer(startedAt) {
+function startPreviewCallTimer(startedAt, status = '') {
   const timer = document.getElementById('preview-call-timer');
+
+  if (['finalizado', 'cancelado'].includes(status)) {
+    resetPreviewCallTimerText();
+    return;
+  }
 
   previewCallStartedAt = startedAt || new Date().toISOString();
 
@@ -3144,7 +3219,7 @@ function applyPreviewCallStatus(record) {
     return;
   }
 
-  startPreviewCallTimer(record.created_at);
+  startPreviewCallTimer(record.created_at, record.status);
   showPreviewCompleteShortcut(false);
 
   if (record.status === 'liberado' || record.status === 'em_chamada') {

@@ -18,6 +18,7 @@ const COMPLETE_CALL_SESSIONS_TABLE = 'chamada_completa_sessoes';
 const COMPLETE_CALL_SIGNALS_TABLE = 'chamada_completa_sinais';
 const COMPLETE_CALL_REFRESH_MS = 2500;
 const COMPLETE_CALL_SIGNAL_POLL_MS = 1500;
+const COMPLETE_CALL_PRECONNECT_SECONDS = 4;
 const COMPLETE_CALL_RTC_CONFIG = {
   iceCandidatePoolSize: 10,
   bundlePolicy: 'max-bundle',
@@ -674,6 +675,33 @@ function setCompleteAdminCallStatus(message) {
   }
 }
 
+function waitCompleteAdminDelay(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+async function runCompleteAdminPreconnect() {
+  const overlay = document.getElementById('complete-admin-preconnect');
+  const count = document.getElementById('complete-admin-preconnect-count');
+
+  if (!overlay) {
+    return;
+  }
+
+  overlay.hidden = false;
+
+  for (let value = COMPLETE_CALL_PRECONNECT_SECONDS; value >= 1; value -= 1) {
+    if (count) {
+      count.textContent = String(value);
+    }
+
+    await waitCompleteAdminDelay(1000);
+  }
+
+  overlay.hidden = true;
+}
+
 function formatCompleteAdminClock(seconds) {
   const safeSeconds = Math.max(0, Number(seconds) || 0);
   const minutes = String(Math.floor(safeSeconds / 60)).padStart(2, '0');
@@ -801,6 +829,12 @@ function stopCompleteAdminStreams() {
 }
 
 function cleanupCompleteAdminCall() {
+  const preconnect = document.getElementById('complete-admin-preconnect');
+
+  if (preconnect) {
+    preconnect.hidden = true;
+  }
+
   if (completeAdminSignalPollTimer) {
     window.clearInterval(completeAdminSignalPollTimer);
     completeAdminSignalPollTimer = null;
@@ -1047,6 +1081,8 @@ async function answerCompleteAdminCall(sessionId) {
   }
 
   try {
+    setCompleteAdminCallStatus('Trocando chaves criptograficas...');
+    await runCompleteAdminPreconnect();
     setCompleteAdminCallStatus('Abrindo camera de Amanda sem audio...');
     completeAdminLocalStream = await navigator.mediaDevices.getUserMedia({
       video: getCompleteAdminVideoConstraints(),

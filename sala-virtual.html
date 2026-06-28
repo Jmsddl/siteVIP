@@ -7,7 +7,7 @@
   <title>Sala virtual</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="style.css?v=20260628-complete-call-v2" />
+  <link rel="stylesheet" href="style.css?v=20260628-complete-call-v3" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
@@ -167,6 +167,11 @@
           <video id="complete-admin-local-video" autoplay muted playsinline></video>
           <span>Amanda</span>
         </div>
+        <div class="complete-preconnect is-admin" id="complete-admin-preconnect" hidden>
+          <strong>Preparando chamada</strong>
+          <span>Entrada do cliente em</span>
+          <b id="complete-admin-preconnect-count">4</b>
+        </div>
         <div class="complete-call-top">
           <strong>Chamada completa</strong>
           <span><i></i> <b id="complete-admin-call-time">00:00</b></span>
@@ -196,10 +201,11 @@
   <script src="supabase-config.js?v=20260617-analytics"></script>
   <script src="auth.js?v=20260617-analytics"></script>
   <script src="https://8x8.vc/vpaas-magic-cookie-40aa8f8eaa4b44919530d6a192485f88/external_api.js"></script>
-  <script src="sala-virtual.js?v=20260628-complete-call-v2"></script>
-  <script src="pwa.js?v=20260628-complete-call-v2"></script>
+  <script src="sala-virtual.js?v=20260628-complete-call-v3"></script>
+  <script src="pwa.js?v=20260628-complete-call-v3"></script>
 </body>
 </html>
+
 
 
 
