@@ -122,6 +122,16 @@ const FULL_CALL_OPTIONS = [
     url: 'https://paylume.fans/c/chamada-com-amanda'
   }
 ];
+const COMPLETE_CALL_TOKENS_TABLE = 'chamada_completa_tokens';
+const COMPLETE_CALL_SESSIONS_TABLE = 'chamada_completa_sessoes';
+const COMPLETE_CALL_SIGNALS_TABLE = 'chamada_completa_sinais';
+const COMPLETE_CALL_SIGNAL_POLL_MS = 1500;
+const COMPLETE_CALL_RTC_CONFIG = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' }
+  ]
+};
 
 let vipConfig = { ...DEFAULT_VIP_CONFIG };
 let floatingOfferInitialized = false;
@@ -155,6 +165,16 @@ let previewChatLastRenderKey = '';
 let previewChatLastMessageKey = '';
 let previewCallClosingForBackground = false;
 let amandaPresenceOnline = false;
+let completeCallSession = null;
+let completeCallPeer = null;
+let completeCallLocalStream = null;
+let completeCallRemoteStream = null;
+let completeCallSignalChannel = null;
+let completeCallSignalPollTimer = null;
+let completeCallLastSignalId = 0;
+let completeCallStarted = false;
+let completeCallPendingIce = [];
+let completeCallEnding = false;
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -463,6 +483,525 @@ function setupVipCheckoutHandlers() {
 
 function getFullCallOption(value) {
   return FULL_CALL_OPTIONS.find((option) => option.value === value) || null;
+}
+
+function normalizeCompleteCallCode(value) {
+  return String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '');
+}
+
+function setCompleteTokenStatus(message, type = '') {
+  const status = document.getElementById('complete-token-status');
+
+  if (!status) {
+    return;
+  }
+
+  status.textContent = message || '';
+  status.classList.toggle('is-error', type === 'error');
+  status.classList.toggle('is-ok', type === 'ok');
+}
+
+function setCompleteVideoStatus(message) {
+  const status = document.getElementById('complete-video-status');
+
+  if (status) {
+    status.textContent = message || '';
+  }
+}
+
+function openPaidCallTokenModal() {
+  const modal = document.getElementById('paid-call-token-modal');
+  const input = document.getElementById('complete-token-input');
+
+  if (!modal) {
+    return;
+  }
+
+  modal.hidden = false;
+  hideFloatingOfferPanel();
+  setCompleteTokenStatus('');
+
+  window.setTimeout(() => input?.focus(), 80);
+  trackEvent('abriu_token_chamada_completa', {
+    alvo_tipo: 'chamada_completa',
+    alvo_titulo: 'Token de chamada'
+  });
+}
+
+function closePaidCallTokenModal() {
+  const modal = document.getElementById('paid-call-token-modal');
+
+  if (modal) {
+    modal.hidden = true;
+  }
+
+  if (!completeCallSession) {
+    showFloatingOfferPanel();
+  }
+}
+
+function openCompleteVideoModal(session) {
+  const tokenModal = document.getElementById('paid-call-token-modal');
+  const videoModal = document.getElementById('complete-video-modal');
+  const title = document.getElementById('complete-video-title');
+  const startButton = document.getElementById('complete-start-call');
+
+  completeCallSession = session;
+  completeCallLastSignalId = 0;
+  completeCallPendingIce = [];
+  completeCallEnding = false;
+
+  if (tokenModal) {
+    tokenModal.hidden = true;
+  }
+
+  if (videoModal) {
+    videoModal.hidden = false;
+  }
+
+  if (title) {
+    title.textContent = `Chamada liberada (${session?.duracao_minutos || 5} min)`;
+  }
+
+  if (startButton) {
+    startButton.disabled = false;
+    startButton.textContent = 'Ligar agora por vídeo';
+  }
+
+  setCompleteVideoStatus('Clique em ligar para iniciar a transmissão de vídeo.');
+  hideFloatingOfferPanel();
+}
+
+function stopCompleteVideoStreams() {
+  [completeCallLocalStream, completeCallRemoteStream].forEach((stream) => {
+    stream?.getTracks?.().forEach((track) => track.stop());
+  });
+
+  completeCallLocalStream = null;
+  completeCallRemoteStream = null;
+
+  ['complete-local-video', 'complete-remote-video'].forEach((id) => {
+    const video = document.getElementById(id);
+
+    if (video) {
+      video.srcObject = null;
+    }
+  });
+}
+
+function cleanupCompleteCallConnection() {
+  if (completeCallSignalPollTimer) {
+    window.clearInterval(completeCallSignalPollTimer);
+    completeCallSignalPollTimer = null;
+  }
+
+  if (completeCallSignalChannel && typeof _supa !== 'undefined' && _supa) {
+    try {
+      _supa.removeChannel(completeCallSignalChannel);
+    } catch (error) {
+      console.warn('Nao consegui remover canal da chamada completa:', error);
+    }
+  }
+
+  completeCallSignalChannel = null;
+
+  if (completeCallPeer) {
+    completeCallPeer.onicecandidate = null;
+    completeCallPeer.ontrack = null;
+    completeCallPeer.onconnectionstatechange = null;
+    completeCallPeer.close();
+  }
+
+  completeCallPeer = null;
+  completeCallStarted = false;
+  stopCompleteVideoStreams();
+}
+
+async function sendCompleteCallSignal(tipo, payload = {}) {
+  if (!completeCallSession?.id || typeof _supa === 'undefined' || !_supa) {
+    return;
+  }
+
+  const { error } = await _supa
+    .from(COMPLETE_CALL_SIGNALS_TABLE)
+    .insert({
+      sessao_id: completeCallSession.id,
+      autor: 'cliente',
+      tipo,
+      payload
+    });
+
+  if (error) {
+    console.warn('Nao consegui enviar sinal da chamada completa:', error.message || error);
+  }
+}
+
+async function flushCompletePendingIce() {
+  if (!completeCallPeer?.remoteDescription || !completeCallPendingIce.length) {
+    return;
+  }
+
+  const pending = [...completeCallPendingIce];
+  completeCallPendingIce = [];
+
+  for (const candidate of pending) {
+    try {
+      await completeCallPeer.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (error) {
+      console.warn('Nao consegui aplicar ICE pendente:', error);
+    }
+  }
+}
+
+async function handleCompleteCallSignal(signal) {
+  if (!signal || signal.autor === 'cliente' || signal.id <= completeCallLastSignalId) {
+    return;
+  }
+
+  completeCallLastSignalId = signal.id;
+
+  if (signal.tipo === 'answer' && completeCallPeer) {
+    if (!completeCallPeer.remoteDescription) {
+      await completeCallPeer.setRemoteDescription(new RTCSessionDescription(signal.payload));
+      await flushCompletePendingIce();
+      setCompleteVideoStatus('Chamada conectada. Vídeo ao vivo ativo.');
+    }
+    return;
+  }
+
+  if (signal.tipo === 'ice' && signal.payload) {
+    if (!completeCallPeer?.remoteDescription) {
+      completeCallPendingIce.push(signal.payload);
+      return;
+    }
+
+    try {
+      await completeCallPeer.addIceCandidate(new RTCIceCandidate(signal.payload));
+    } catch (error) {
+      console.warn('Nao consegui adicionar ICE da chamada completa:', error);
+    }
+    return;
+  }
+
+  if (signal.tipo === 'end') {
+    endCompleteVideoCall('remoto');
+  }
+}
+
+async function pollCompleteCallSignals() {
+  if (!completeCallSession?.id || typeof _supa === 'undefined' || !_supa) {
+    return;
+  }
+
+  const { data, error } = await _supa
+    .from(COMPLETE_CALL_SIGNALS_TABLE)
+    .select('id, autor, tipo, payload')
+    .eq('sessao_id', completeCallSession.id)
+    .gt('id', completeCallLastSignalId)
+    .order('id', { ascending: true });
+
+  if (error) {
+    console.warn('Nao consegui buscar sinais da chamada completa:', error.message || error);
+    return;
+  }
+
+  for (const signal of data || []) {
+    await handleCompleteCallSignal(signal);
+  }
+}
+
+function subscribeCompleteCallSignals() {
+  if (!completeCallSession?.id || typeof _supa === 'undefined' || !_supa) {
+    return;
+  }
+
+  if (completeCallSignalChannel) {
+    _supa.removeChannel(completeCallSignalChannel);
+  }
+
+  completeCallSignalChannel = _supa
+    .channel(`complete-call-client-${completeCallSession.id}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: COMPLETE_CALL_SIGNALS_TABLE,
+        filter: `sessao_id=eq.${completeCallSession.id}`
+      },
+      (payload) => {
+        handleCompleteCallSignal(payload.new);
+      }
+    )
+    .subscribe();
+
+  pollCompleteCallSignals();
+
+  if (completeCallSignalPollTimer) {
+    window.clearInterval(completeCallSignalPollTimer);
+  }
+
+  completeCallSignalPollTimer = window.setInterval(
+    pollCompleteCallSignals,
+    COMPLETE_CALL_SIGNAL_POLL_MS
+  );
+}
+
+async function validateCompleteCallToken(code) {
+  if (typeof _supa === 'undefined' || !_supa) {
+    setCompleteTokenStatus('Nao consegui conectar ao banco agora.', 'error');
+    return;
+  }
+
+  const normalizedCode = normalizeCompleteCallCode(code);
+
+  if (!normalizedCode) {
+    setCompleteTokenStatus('Digite o codigo enviado por Amanda.', 'error');
+    return;
+  }
+
+  setCompleteTokenStatus('Validando codigo...');
+
+  const { data: token, error } = await _supa
+    .from(COMPLETE_CALL_TOKENS_TABLE)
+    .select('*')
+    .eq('codigo', normalizedCode)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Erro ao validar token de chamada:', error);
+    setCompleteTokenStatus('Nao consegui validar o codigo agora.', 'error');
+    return;
+  }
+
+  if (!token) {
+    setCompleteTokenStatus('Codigo nao encontrado. Confira e tente novamente.', 'error');
+    return;
+  }
+
+  if (token.status !== 'novo') {
+    setCompleteTokenStatus('Esse codigo ja foi usado ou cancelado.', 'error');
+    return;
+  }
+
+  if (token.expira_em && new Date(token.expira_em).getTime() < Date.now()) {
+    setCompleteTokenStatus('Esse codigo expirou. Peça um novo codigo.', 'error');
+    return;
+  }
+
+  const user = getStoredUser();
+  const ip = await getClientIp();
+  const sessionPayload = {
+    token_id: token.id,
+    codigo: token.codigo,
+    status: 'aguardando',
+    username: user.username || 'Anonimo',
+    plano: token.plano || '',
+    duracao_minutos: Number(token.duracao_minutos) || 5,
+    ip: ip || null,
+    sessao_id: getAnalyticsSessionId(),
+    cliente_online: true,
+    atualizado_em: new Date().toISOString()
+  };
+
+  const { data: session, error: sessionError } = await _supa
+    .from(COMPLETE_CALL_SESSIONS_TABLE)
+    .insert(sessionPayload)
+    .select('*')
+    .single();
+
+  if (sessionError) {
+    console.error('Erro ao criar sessao de chamada completa:', sessionError);
+    setCompleteTokenStatus('Nao consegui abrir a chamada agora.', 'error');
+    return;
+  }
+
+  const { data: lockedToken, error: updateError } = await _supa
+    .from(COMPLETE_CALL_TOKENS_TABLE)
+    .update({
+      status: 'em_uso',
+      sessao_id: session.id,
+      usado_por_username: user.username || 'Anonimo',
+      usado_por_ip: ip || null,
+      usado_em: new Date().toISOString(),
+      atualizado_em: new Date().toISOString()
+    })
+    .eq('id', token.id)
+    .eq('status', 'novo')
+    .select('id')
+    .maybeSingle();
+
+  if (updateError || !lockedToken) {
+    console.warn('Nao consegui marcar token em uso:', updateError?.message || updateError || 'token ja usado');
+    await _supa
+      .from(COMPLETE_CALL_SESSIONS_TABLE)
+      .update({
+        status: 'cancelada',
+        finalizada_em: new Date().toISOString(),
+        atualizado_em: new Date().toISOString()
+      })
+      .eq('id', session.id);
+    setCompleteTokenStatus('Esse codigo acabou de ser usado. Peça um novo codigo.', 'error');
+    return;
+  }
+
+  setCompleteTokenStatus('Codigo liberado. Abrindo chamada...', 'ok');
+  openCompleteVideoModal(session);
+  trackEvent('validou_token_chamada_completa', {
+    alvo_tipo: 'chamada_completa',
+    alvo_titulo: token.plano || token.codigo
+  });
+}
+
+async function startCompleteVideoCall() {
+  const startButton = document.getElementById('complete-start-call');
+  const localVideo = document.getElementById('complete-local-video');
+  const remoteVideo = document.getElementById('complete-remote-video');
+
+  if (!completeCallSession || completeCallStarted) {
+    return;
+  }
+
+  try {
+    completeCallStarted = true;
+
+    if (startButton) {
+      startButton.disabled = true;
+      startButton.textContent = 'Conectando...';
+    }
+
+    setCompleteVideoStatus('Abrindo sua camera sem audio...');
+    completeCallLocalStream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: false
+    });
+
+    if (localVideo) {
+      localVideo.srcObject = completeCallLocalStream;
+    }
+
+    completeCallRemoteStream = new MediaStream();
+
+    if (remoteVideo) {
+      remoteVideo.srcObject = completeCallRemoteStream;
+    }
+
+    completeCallPeer = new RTCPeerConnection(COMPLETE_CALL_RTC_CONFIG);
+
+    completeCallLocalStream.getVideoTracks().forEach((track) => {
+      completeCallPeer.addTrack(track, completeCallLocalStream);
+    });
+
+    completeCallPeer.ontrack = (event) => {
+      event.streams?.[0]?.getTracks?.().forEach((track) => {
+        completeCallRemoteStream.addTrack(track);
+      });
+    };
+
+    completeCallPeer.onicecandidate = (event) => {
+      if (event.candidate) {
+        sendCompleteCallSignal('ice', event.candidate.toJSON());
+      }
+    };
+
+    completeCallPeer.onconnectionstatechange = () => {
+      const state = completeCallPeer?.connectionState;
+
+      if (state === 'connected') {
+        setCompleteVideoStatus('Chamada conectada. Vídeo ao vivo ativo.');
+      }
+
+      if (state === 'failed' || state === 'disconnected') {
+        setCompleteVideoStatus('Conexao instavel. Tente encerrar e abrir novamente.');
+      }
+    };
+
+    subscribeCompleteCallSignals();
+    setCompleteVideoStatus('Chamando Amanda...');
+
+    const offer = await completeCallPeer.createOffer({
+      offerToReceiveVideo: true,
+      offerToReceiveAudio: false
+    });
+    await completeCallPeer.setLocalDescription(offer);
+    await sendCompleteCallSignal('offer', offer);
+
+    await _supa
+      .from(COMPLETE_CALL_SESSIONS_TABLE)
+      .update({
+        status: 'chamando',
+        cliente_online: true,
+        atualizado_em: new Date().toISOString()
+      })
+      .eq('id', completeCallSession.id);
+
+    trackEvent('iniciou_chamada_completa_video', {
+      alvo_tipo: 'chamada_completa',
+      alvo_titulo: completeCallSession.codigo
+    });
+  } catch (error) {
+    console.error('Erro na chamada completa:', error);
+    completeCallStarted = false;
+    cleanupCompleteCallConnection();
+    setCompleteVideoStatus('Nao consegui abrir a camera ou conectar a chamada.');
+
+    if (startButton) {
+      startButton.disabled = false;
+      startButton.textContent = 'Tentar novamente';
+    }
+  }
+}
+
+async function endCompleteVideoCall(origin = 'cliente') {
+  if (completeCallEnding) {
+    return;
+  }
+
+  completeCallEnding = true;
+  const session = completeCallSession;
+
+  if (origin !== 'remoto' && session?.id) {
+    await sendCompleteCallSignal('end', { encerrado_por: 'cliente' });
+  }
+
+  if (session?.id && typeof _supa !== 'undefined' && _supa) {
+    await _supa
+      .from(COMPLETE_CALL_SESSIONS_TABLE)
+      .update({
+        status: 'finalizada',
+        cliente_online: false,
+        finalizada_em: new Date().toISOString(),
+        atualizado_em: new Date().toISOString()
+      })
+      .eq('id', session.id);
+
+    if (session.token_id) {
+      await _supa
+        .from(COMPLETE_CALL_TOKENS_TABLE)
+        .update({
+          status: 'usado',
+          atualizado_em: new Date().toISOString()
+        })
+        .eq('id', session.token_id)
+        .in('status', ['novo', 'em_uso']);
+    }
+  }
+
+  cleanupCompleteCallConnection();
+  completeCallSession = null;
+  completeCallPendingIce = [];
+  completeCallEnding = false;
+
+  const modal = document.getElementById('complete-video-modal');
+
+  if (modal) {
+    modal.hidden = true;
+  }
+
+  showFloatingOfferPanel();
 }
 
 function formatCallWaitTime(startedAt) {
@@ -2765,6 +3304,9 @@ function setupCallHandlers() {
   const previewChatInput = document.getElementById('preview-chat-input');
   const fullSelect = document.getElementById('full-call-select');
   const fullCheckout = document.getElementById('full-call-checkout');
+  const completeTokenForm = document.getElementById('complete-token-form');
+  const completeTokenInput = document.getElementById('complete-token-input');
+  const completeStartButton = document.getElementById('complete-start-call');
 
   if (previewEnter) {
     previewEnter.addEventListener('click', () => {
@@ -2841,6 +3383,24 @@ function setupCallHandlers() {
         window.location.href = selectedOption.url;
       });
     });
+  }
+
+  if (completeTokenForm && completeTokenInput) {
+    completeTokenForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      validateCompleteCallToken(completeTokenInput.value);
+    });
+  }
+
+  if (completeTokenInput) {
+    completeTokenInput.addEventListener('input', () => {
+      completeTokenInput.value = normalizeCompleteCallCode(completeTokenInput.value);
+      setCompleteTokenStatus('');
+    });
+  }
+
+  if (completeStartButton) {
+    completeStartButton.addEventListener('click', startCompleteVideoCall);
   }
 }
 
@@ -4252,9 +4812,11 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('pagehide', () => {
   finishPreviewCallOnBackgroundExit('saiu_da_pagina');
+  cleanupCompleteCallConnection();
 });
 window.addEventListener('beforeunload', () => {
   finishPreviewCallOnBackgroundExit('saiu_da_pagina');
+  cleanupCompleteCallConnection();
 
   if (presencePollTimer) {
     window.clearInterval(presencePollTimer);

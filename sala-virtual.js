@@ -13,6 +13,17 @@ const ROOM_PRESENCE_KEY = 'amanda';
 const ROOM_PRESENCE_HEARTBEAT_MS = 10000;
 const ROOM_MESSAGE_LIMIT = 1000;
 const ROOM_ORIGINAL_TITLE = document.title;
+const COMPLETE_CALL_TOKENS_TABLE = 'chamada_completa_tokens';
+const COMPLETE_CALL_SESSIONS_TABLE = 'chamada_completa_sessoes';
+const COMPLETE_CALL_SIGNALS_TABLE = 'chamada_completa_sinais';
+const COMPLETE_CALL_REFRESH_MS = 2500;
+const COMPLETE_CALL_SIGNAL_POLL_MS = 1500;
+const COMPLETE_CALL_RTC_CONFIG = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' }
+  ]
+};
 
 let roomRows = [];
 let roomTimer = null;
@@ -36,6 +47,17 @@ let roomMessagesById = new Map();
 let roomMarkingReadIds = new Set();
 let roomChatRenderKeys = new Map();
 let roomChatMessageKeys = new Map();
+let completeAdminCalls = [];
+let completeAdminTimer = null;
+let completeAdminPeer = null;
+let completeAdminLocalStream = null;
+let completeAdminRemoteStream = null;
+let completeAdminSession = null;
+let completeAdminSignalChannel = null;
+let completeAdminSignalPollTimer = null;
+let completeAdminLastSignalId = 0;
+let completeAdminPendingIce = [];
+let completeAdminEnding = false;
 
 function getRoomUser() {
   try {
@@ -452,6 +474,561 @@ function notifyRoomAlert(count, message = '') {
       body: message || `${count} pessoa(s) aguardando na sala virtual.`
     });
   }
+}
+
+function generateCompleteTokenCode() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = new Uint8Array(5);
+  window.crypto.getRandomValues(bytes);
+  const suffix = [...bytes].map((byte) => alphabet[byte % alphabet.length]).join('');
+
+  return `VIP-${suffix}`;
+}
+
+function getCompleteTokenPlan() {
+  const select = document.getElementById('complete-token-plan');
+  const minutes = Number(select?.value || 5) || 5;
+
+  return {
+    plano: `${minutes}_minutos`,
+    duracao_minutos: minutes
+  };
+}
+
+function setCompleteGeneratedToken(code = '') {
+  const wrapper = document.getElementById('complete-generated-token');
+  const codeEl = document.getElementById('complete-generated-code');
+
+  if (!wrapper || !codeEl) {
+    return;
+  }
+
+  wrapper.hidden = !code;
+  codeEl.textContent = code || '---';
+}
+
+async function generateCompleteCallToken() {
+  if (typeof _supa === 'undefined' || !_supa) {
+    setRoomStatus('Nao consegui conectar ao banco para gerar token.', true);
+    return;
+  }
+
+  const button = document.getElementById('complete-token-generate');
+  const plan = getCompleteTokenPlan();
+  const user = getRoomUser();
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Gerando...';
+  }
+
+  try {
+    let lastError = null;
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const codigo = generateCompleteTokenCode();
+      const { error } = await _supa
+        .from(COMPLETE_CALL_TOKENS_TABLE)
+        .insert({
+          codigo,
+          plano: plan.plano,
+          duracao_minutos: plan.duracao_minutos,
+          status: 'novo',
+          criado_por: user.username || 'admin',
+          expira_em: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+        });
+
+      if (!error) {
+        setCompleteGeneratedToken(codigo);
+        setRoomStatus(`Token ${codigo} gerado. Ele vale por 24 horas e so funciona uma vez.`);
+        return;
+      }
+
+      lastError = error;
+    }
+
+    throw lastError || new Error('Nao consegui gerar token unico.');
+  } catch (error) {
+    console.error('Erro ao gerar token:', error);
+    setRoomStatus('Nao consegui gerar token. Confira se o SQL da chamada completa foi rodado.', true);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Gerar token de chamada';
+    }
+  }
+}
+
+async function copyCompleteToken() {
+  const code = document.getElementById('complete-generated-code')?.textContent?.trim();
+
+  if (!code || code === '---') {
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(code);
+    setRoomStatus('Token copiado.');
+  } catch (error) {
+    setRoomStatus(`Copie manualmente: ${code}`);
+  }
+}
+
+function getCompleteCallStatusLabel(status) {
+  const labels = {
+    aguardando: 'Aguardando',
+    chamando: 'Chamando',
+    em_chamada: 'Em chamada',
+    finalizada: 'Finalizada',
+    cancelada: 'Cancelada'
+  };
+
+  return labels[status] || status || '-';
+}
+
+function renderCompleteAdminCalls() {
+  const container = document.getElementById('complete-admin-calls');
+
+  if (!container) {
+    return;
+  }
+
+  if (!completeAdminCalls.length) {
+    container.innerHTML = '<span class="room-chat-empty">Nenhuma chamada completa aguardando agora.</span>';
+    return;
+  }
+
+  container.innerHTML = completeAdminCalls.map((call) => {
+    const statusClass = String(call.status || 'aguardando').replace(/[^a-z0-9_-]/gi, '');
+    const canAnswer = call.status === 'chamando' || call.status === 'aguardando' || call.status === 'em_chamada';
+
+    return `
+      <article class="complete-admin-call-row">
+        <div>
+          <strong>${escapeRoom(call.username || 'Cliente')} - ${escapeRoom(call.codigo || '')}</strong>
+          <span>
+            ${escapeRoom(getCompleteCallStatusLabel(call.status))}
+            · ${escapeRoom(call.duracao_minutos || 5)} min
+            · IP ${escapeRoom(call.ip || 'sem IP')}
+            · ${escapeRoom(formatRoomDate(call.criado_em))}
+          </span>
+        </div>
+        <button
+          class="btn-primary"
+          type="button"
+          onclick="answerCompleteAdminCall('${escapeRoom(call.id)}')"
+          ${canAnswer ? '' : 'disabled'}
+        >
+          ${call.status === 'em_chamada' ? 'Abrir chamada' : 'Atender chamada'}
+        </button>
+      </article>
+    `;
+  }).join('');
+}
+
+async function loadCompleteAdminCalls() {
+  if (typeof _supa === 'undefined' || !_supa) {
+    return;
+  }
+
+  const { data, error } = await _supa
+    .from(COMPLETE_CALL_SESSIONS_TABLE)
+    .select('*')
+    .in('status', ['aguardando', 'chamando', 'em_chamada'])
+    .order('criado_em', { ascending: false })
+    .limit(20);
+
+  if (error) {
+    console.warn('Nao consegui carregar chamadas completas:', error.message || error);
+    return;
+  }
+
+  const previousCalling = new Set(
+    completeAdminCalls
+      .filter((call) => call.status === 'chamando')
+      .map((call) => call.id)
+  );
+  completeAdminCalls = data || [];
+  const newCalling = completeAdminCalls
+    .filter((call) => call.status === 'chamando' && !previousCalling.has(call.id));
+
+  if (newCalling.length) {
+    notifyRoomAlert(newCalling.length, 'Chamada completa recebida. Atenda no painel.');
+  }
+
+  renderCompleteAdminCalls();
+}
+
+function setCompleteAdminCallStatus(message) {
+  const status = document.getElementById('complete-admin-call-status');
+
+  if (status) {
+    status.textContent = message || '';
+  }
+}
+
+function stopCompleteAdminStreams() {
+  [completeAdminLocalStream, completeAdminRemoteStream].forEach((stream) => {
+    stream?.getTracks?.().forEach((track) => track.stop());
+  });
+
+  completeAdminLocalStream = null;
+  completeAdminRemoteStream = null;
+
+  ['complete-admin-local-video', 'complete-admin-remote-video'].forEach((id) => {
+    const video = document.getElementById(id);
+
+    if (video) {
+      video.srcObject = null;
+    }
+  });
+}
+
+function cleanupCompleteAdminCall() {
+  if (completeAdminSignalPollTimer) {
+    window.clearInterval(completeAdminSignalPollTimer);
+    completeAdminSignalPollTimer = null;
+  }
+
+  if (completeAdminSignalChannel && typeof _supa !== 'undefined' && _supa) {
+    try {
+      _supa.removeChannel(completeAdminSignalChannel);
+    } catch (error) {
+      console.warn('Nao consegui remover canal admin:', error);
+    }
+  }
+
+  completeAdminSignalChannel = null;
+
+  if (completeAdminPeer) {
+    completeAdminPeer.onicecandidate = null;
+    completeAdminPeer.ontrack = null;
+    completeAdminPeer.onconnectionstatechange = null;
+    completeAdminPeer.close();
+  }
+
+  completeAdminPeer = null;
+  stopCompleteAdminStreams();
+}
+
+async function sendCompleteAdminSignal(tipo, payload = {}) {
+  if (!completeAdminSession?.id || typeof _supa === 'undefined' || !_supa) {
+    return;
+  }
+
+  const { error } = await _supa
+    .from(COMPLETE_CALL_SIGNALS_TABLE)
+    .insert({
+      sessao_id: completeAdminSession.id,
+      autor: 'admin',
+      tipo,
+      payload
+    });
+
+  if (error) {
+    console.warn('Nao consegui enviar sinal admin:', error.message || error);
+  }
+}
+
+async function flushCompleteAdminPendingIce() {
+  if (!completeAdminPeer?.remoteDescription || !completeAdminPendingIce.length) {
+    return;
+  }
+
+  const pending = [...completeAdminPendingIce];
+  completeAdminPendingIce = [];
+
+  for (const candidate of pending) {
+    try {
+      await completeAdminPeer.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (error) {
+      console.warn('Nao consegui aplicar ICE admin:', error);
+    }
+  }
+}
+
+async function acceptCompleteAdminOffer(offer) {
+  if (!completeAdminPeer || !completeAdminSession?.id || !offer || completeAdminPeer.remoteDescription) {
+    return;
+  }
+
+  await completeAdminPeer.setRemoteDescription(new RTCSessionDescription(offer));
+  await flushCompleteAdminPendingIce();
+  const answer = await completeAdminPeer.createAnswer();
+  await completeAdminPeer.setLocalDescription(answer);
+  await sendCompleteAdminSignal('answer', answer);
+
+  await _supa
+    .from(COMPLETE_CALL_SESSIONS_TABLE)
+    .update({
+      status: 'em_chamada',
+      admin_online: true,
+      iniciada_em: completeAdminSession.iniciada_em || new Date().toISOString(),
+      atualizado_em: new Date().toISOString()
+    })
+    .eq('id', completeAdminSession.id);
+
+  setCompleteAdminCallStatus('Resposta enviada. Conectando videos...');
+  loadCompleteAdminCalls();
+}
+
+async function handleCompleteAdminSignal(signal) {
+  if (!signal || signal.autor === 'admin' || signal.id <= completeAdminLastSignalId) {
+    return;
+  }
+
+  completeAdminLastSignalId = signal.id;
+
+  if (signal.tipo === 'offer' && signal.payload) {
+    try {
+      await acceptCompleteAdminOffer(signal.payload);
+    } catch (error) {
+      console.warn('Nao consegui responder oferta do cliente:', error);
+      setCompleteAdminCallStatus('Nao consegui responder a chamada. Tente novamente.');
+    }
+    return;
+  }
+
+  if (signal.tipo === 'ice' && signal.payload) {
+    if (!completeAdminPeer?.remoteDescription) {
+      completeAdminPendingIce.push(signal.payload);
+      return;
+    }
+
+    try {
+      await completeAdminPeer.addIceCandidate(new RTCIceCandidate(signal.payload));
+    } catch (error) {
+      console.warn('Nao consegui adicionar ICE do cliente:', error);
+    }
+    return;
+  }
+
+  if (signal.tipo === 'end') {
+    endAdminCompleteCall('remoto');
+  }
+}
+
+async function pollCompleteAdminSignals() {
+  if (!completeAdminSession?.id || typeof _supa === 'undefined' || !_supa) {
+    return;
+  }
+
+  const { data, error } = await _supa
+    .from(COMPLETE_CALL_SIGNALS_TABLE)
+    .select('id, autor, tipo, payload')
+    .eq('sessao_id', completeAdminSession.id)
+    .gt('id', completeAdminLastSignalId)
+    .order('id', { ascending: true });
+
+  if (error) {
+    console.warn('Nao consegui buscar sinais admin:', error.message || error);
+    return;
+  }
+
+  for (const signal of data || []) {
+    await handleCompleteAdminSignal(signal);
+  }
+}
+
+function subscribeCompleteAdminSignals() {
+  if (!completeAdminSession?.id || typeof _supa === 'undefined' || !_supa) {
+    return;
+  }
+
+  if (completeAdminSignalChannel) {
+    _supa.removeChannel(completeAdminSignalChannel);
+  }
+
+  completeAdminSignalChannel = _supa
+    .channel(`complete-call-admin-${completeAdminSession.id}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: COMPLETE_CALL_SIGNALS_TABLE,
+        filter: `sessao_id=eq.${completeAdminSession.id}`
+      },
+      (payload) => {
+        handleCompleteAdminSignal(payload.new);
+      }
+    )
+    .subscribe();
+
+  pollCompleteAdminSignals();
+
+  if (completeAdminSignalPollTimer) {
+    window.clearInterval(completeAdminSignalPollTimer);
+  }
+
+  completeAdminSignalPollTimer = window.setInterval(
+    pollCompleteAdminSignals,
+    COMPLETE_CALL_SIGNAL_POLL_MS
+  );
+}
+
+async function waitForCompleteOffer(sessionId) {
+  for (let attempt = 0; attempt < 18; attempt += 1) {
+    const { data, error } = await _supa
+      .from(COMPLETE_CALL_SIGNALS_TABLE)
+      .select('id, payload')
+      .eq('sessao_id', sessionId)
+      .eq('autor', 'cliente')
+      .eq('tipo', 'offer')
+      .order('id', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    if (data?.payload) {
+      completeAdminLastSignalId = Math.max(completeAdminLastSignalId, data.id);
+      return data.payload;
+    }
+
+    await new Promise((resolve) => window.setTimeout(resolve, 1000));
+  }
+
+  return null;
+}
+
+async function answerCompleteAdminCall(sessionId) {
+  const session = completeAdminCalls.find((call) => call.id === sessionId) || { id: sessionId };
+  const modal = document.getElementById('complete-admin-call-modal');
+  const title = document.getElementById('complete-admin-call-title');
+  const localVideo = document.getElementById('complete-admin-local-video');
+  const remoteVideo = document.getElementById('complete-admin-remote-video');
+
+  if (typeof _supa === 'undefined' || !_supa) {
+    setRoomStatus('Nao consegui conectar ao banco para atender chamada.', true);
+    return;
+  }
+
+  cleanupCompleteAdminCall();
+  completeAdminSession = session;
+  completeAdminLastSignalId = 0;
+  completeAdminPendingIce = [];
+  completeAdminEnding = false;
+
+  if (modal) {
+    modal.hidden = false;
+  }
+
+  if (title) {
+    title.textContent = `${session.username || 'Cliente'} - ${session.codigo || ''}`;
+  }
+
+  try {
+    setCompleteAdminCallStatus('Abrindo camera de Amanda sem audio...');
+    completeAdminLocalStream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: false
+    });
+
+    if (localVideo) {
+      localVideo.srcObject = completeAdminLocalStream;
+    }
+
+    completeAdminRemoteStream = new MediaStream();
+
+    if (remoteVideo) {
+      remoteVideo.srcObject = completeAdminRemoteStream;
+    }
+
+    completeAdminPeer = new RTCPeerConnection(COMPLETE_CALL_RTC_CONFIG);
+    completeAdminLocalStream.getVideoTracks().forEach((track) => {
+      completeAdminPeer.addTrack(track, completeAdminLocalStream);
+    });
+
+    completeAdminPeer.ontrack = (event) => {
+      event.streams?.[0]?.getTracks?.().forEach((track) => {
+        completeAdminRemoteStream.addTrack(track);
+      });
+    };
+
+    completeAdminPeer.onicecandidate = (event) => {
+      if (event.candidate) {
+        sendCompleteAdminSignal('ice', event.candidate.toJSON());
+      }
+    };
+
+    completeAdminPeer.onconnectionstatechange = () => {
+      const state = completeAdminPeer?.connectionState;
+
+      if (state === 'connected') {
+        setCompleteAdminCallStatus('Chamada conectada. Video ao vivo ativo.');
+      }
+
+      if (state === 'failed' || state === 'disconnected') {
+        setCompleteAdminCallStatus('Conexao instavel. Se precisar, encerre e gere outro token.');
+      }
+    };
+
+    subscribeCompleteAdminSignals();
+    setCompleteAdminCallStatus('Aguardando sinal do cliente...');
+    const offer = await waitForCompleteOffer(session.id);
+
+    if (!offer) {
+      setCompleteAdminCallStatus('O cliente ainda nao apertou ligar. Tente atender novamente quando ele chamar.');
+      return;
+    }
+
+    await acceptCompleteAdminOffer(offer);
+  } catch (error) {
+    console.error('Erro ao atender chamada completa:', error);
+    setCompleteAdminCallStatus('Nao consegui atender. Confira permissao da camera e tente novamente.');
+  }
+}
+
+async function endAdminCompleteCall(origin = 'admin') {
+  if (completeAdminEnding) {
+    return;
+  }
+
+  completeAdminEnding = true;
+  const session = completeAdminSession;
+
+  if (origin !== 'remoto' && session?.id) {
+    await sendCompleteAdminSignal('end', { encerrado_por: 'admin' });
+  }
+
+  if (session?.id && typeof _supa !== 'undefined' && _supa) {
+    await _supa
+      .from(COMPLETE_CALL_SESSIONS_TABLE)
+      .update({
+        status: 'finalizada',
+        admin_online: false,
+        finalizada_em: new Date().toISOString(),
+        atualizado_em: new Date().toISOString()
+      })
+      .eq('id', session.id);
+
+    if (session.token_id) {
+      await _supa
+        .from(COMPLETE_CALL_TOKENS_TABLE)
+        .update({
+          status: 'usado',
+          atualizado_em: new Date().toISOString()
+        })
+        .eq('id', session.token_id)
+        .in('status', ['novo', 'em_uso']);
+    }
+  }
+
+  cleanupCompleteAdminCall();
+  completeAdminSession = null;
+  completeAdminPendingIce = [];
+  completeAdminEnding = false;
+
+  const modal = document.getElementById('complete-admin-call-modal');
+
+  if (modal) {
+    modal.hidden = true;
+  }
+
+  loadCompleteAdminCalls();
 }
 
 function showIncomingCallPopup(row) {
@@ -1333,7 +1910,7 @@ function setupVirtualRoom() {
       denied.hidden = false;
     }
 
-    document.querySelectorAll('.analytics-hero, .virtual-room-workspace, .analytics-status')
+    document.querySelectorAll('.analytics-hero, .virtual-room-workspace, .analytics-status, .room-presence-card, .room-message-usage, .complete-admin-panel')
       .forEach((element) => {
         element.style.display = 'none';
       });
@@ -1343,6 +1920,8 @@ function setupVirtualRoom() {
   document.getElementById('room-refresh')?.addEventListener('click', loadRoomRows);
   document.getElementById('room-alerts')?.addEventListener('click', enableRoomAlerts);
   document.getElementById('room-clear-messages')?.addEventListener('click', clearRoomMessages);
+  document.getElementById('complete-token-generate')?.addEventListener('click', generateCompleteCallToken);
+  document.getElementById('complete-copy-token')?.addEventListener('click', copyCompleteToken);
   document.getElementById('room-answer-incoming')?.addEventListener('click', () => {
     if (roomIncomingCallId) {
       acceptIncomingCall(roomIncomingCallId);
@@ -1363,12 +1942,18 @@ function setupVirtualRoom() {
 
   startRoomPresence();
   loadRoomRows();
+  loadCompleteAdminCalls();
   roomTimer = window.setInterval(loadRoomRows, ROOM_REFRESH_MS);
+  completeAdminTimer = window.setInterval(loadCompleteAdminCalls, COMPLETE_CALL_REFRESH_MS);
 }
 
 window.addEventListener('beforeunload', () => {
   if (roomTimer) {
     window.clearInterval(roomTimer);
+  }
+
+  if (completeAdminTimer) {
+    window.clearInterval(completeAdminTimer);
   }
 
   if (roomAlertPopupTimer) {
@@ -1388,6 +1973,7 @@ window.addEventListener('beforeunload', () => {
     }
   });
   roomJitsiApis = new Map();
+  cleanupCompleteAdminCall();
 });
 
 document.addEventListener('DOMContentLoaded', setupVirtualRoom);

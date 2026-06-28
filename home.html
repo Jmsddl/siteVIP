@@ -9,7 +9,7 @@
 
   <link rel="manifest" href="manifest.webmanifest"/>
   <link rel="apple-touch-icon" href="icon-192.png"/>
-<link rel="stylesheet" href="style.css?v=20260625-sim-call-v24"/>
+<link rel="stylesheet" href="style.css?v=20260628-complete-call-v1"/>
 
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
@@ -36,6 +36,13 @@
         onclick="openFullCallModal()"
       >
         Fazer chamada completa
+      </button>
+      <button
+        class="btn-call-action is-paid"
+        type="button"
+        onclick="openPaidCallTokenModal()"
+      >
+        Já paguei, fazer chamada agora
       </button>
     </div>
     <button
@@ -85,12 +92,16 @@
 </div>
 
 <p class="profile-bio">
-Bem-vindo ao meu paraíso - 21+<br><br>
-Aqui você encontra:<br>
-• Galerias íntimas<br>
-• Vídeos explícitos<br>
-• Fantasias secretas realizadas<br>
-• Novidades semanais<br><br>
+  <strong>🔞 Bem-vindo ao meu paraíso proibido - 21 anos de pura delícia!</strong>
+<br><br>
+Se você chegou até aqui, é porque merece acessar o que mais tenho de melhor. Conteúdos que só meus segredos mais especiais podem ver.
+
+Aqui eu sou completamente sua:
+• Galerias íntimas onde cada detalhe fica à mostra
+• Vídeos exclusivos com meus brinquedos favoritos e sexo explícito.
+• Minhas fantasias mais secretas realizadas apenas para você
+• Conteúdo novo toda semana para nunca te deixar entediado
+  <br><br>
  
 </p>
 <div class="profile-stats">
@@ -419,6 +430,88 @@ Aqui você encontra:<br>
     </div>
   </div>
 
+  <!-- MODAL TOKEN CHAMADA COMPLETA -->
+
+  <div
+    class="complete-call-overlay"
+    id="paid-call-token-modal"
+    hidden
+  >
+    <div class="complete-call-card">
+      <button
+        class="call-modal-close"
+        type="button"
+        aria-label="Fechar chamada por token"
+        onclick="closePaidCallTokenModal()"
+      >
+        x
+      </button>
+      <span class="call-modal-kicker">Chamada completa</span>
+      <h2>Digite seu código de chamada</h2>
+      <p>
+        Depois do pagamento confirmado, use o código único enviado por Amanda para liberar a videochamada.
+      </p>
+      <form class="complete-token-form" id="complete-token-form">
+        <input
+          id="complete-token-input"
+          type="text"
+          inputmode="text"
+          autocomplete="one-time-code"
+          maxlength="16"
+          placeholder="Ex: VIP-1234"
+        />
+        <button class="btn-primary" type="submit">
+          Liberar chamada
+        </button>
+      </form>
+      <p class="complete-call-status" id="complete-token-status" aria-live="polite"></p>
+    </div>
+  </div>
+
+  <!-- CHAMADA COMPLETA REAL -->
+
+  <div
+    class="complete-call-overlay"
+    id="complete-video-modal"
+    hidden
+  >
+    <div class="complete-video-card">
+      <div class="complete-video-head">
+        <div>
+          <span class="call-modal-kicker">Chamada completa</span>
+          <h2 id="complete-video-title">Chamada liberada</h2>
+          <p id="complete-video-status">Clique em ligar para iniciar a transmissão de vídeo.</p>
+        </div>
+        <button
+          class="call-modal-close"
+          type="button"
+          aria-label="Encerrar chamada"
+          onclick="endCompleteVideoCall('cliente')"
+        >
+          x
+        </button>
+      </div>
+      <div class="complete-video-grid">
+        <div class="complete-video-box">
+          <video id="complete-remote-video" autoplay playsinline></video>
+          <span>Amanda</span>
+        </div>
+        <div class="complete-video-box is-local">
+          <video id="complete-local-video" autoplay muted playsinline></video>
+          <span>Sua câmera</span>
+        </div>
+      </div>
+      <div class="complete-video-actions">
+        <button class="btn-primary" id="complete-start-call" type="button">
+          Ligar agora por vídeo
+        </button>
+        <button class="btn-secondary" type="button" onclick="endCompleteVideoCall('cliente')">
+          Encerrar
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- PAINEL FLUTUANTE DE OFERTAS -->
 
   <aside
@@ -481,12 +574,13 @@ Aqui você encontra:<br>
 
   <script src="auth.js?v=20260617-analytics"></script>
 
-  <script src="app.js?v=20260625-sim-call-v24"></script>
+  <script src="app.js?v=20260628-complete-call-v1"></script>
 
-  <script src="pwa.js?v=20260625-sim-call-v24"></script>
+  <script src="pwa.js?v=20260628-complete-call-v1"></script>
 
 </body>
 </html>
+
 
 
 

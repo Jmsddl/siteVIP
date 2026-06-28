@@ -7,7 +7,7 @@
   <title>Sala virtual</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="style.css?v=20260625-sim-call-v24" />
+  <link rel="stylesheet" href="style.css?v=20260628-complete-call-v1" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
@@ -70,6 +70,36 @@
       </button>
     </div>
 
+    <section class="complete-admin-panel">
+      <div class="complete-admin-head">
+        <div>
+          <span class="analytics-kicker">Chamada completa</span>
+          <h2>Token de acesso</h2>
+          <p>Gere um codigo unico depois de confirmar o pagamento. O usuario usa esse codigo para entrar na chamada completa.</p>
+        </div>
+        <div class="complete-admin-token-form">
+          <select id="complete-token-plan" aria-label="Tempo da chamada completa">
+            <option value="5">Chamada 5 minutos</option>
+            <option value="10">Chamada 10 minutos</option>
+            <option value="30">Chamada 30 minutos</option>
+          </select>
+          <button class="btn-primary" id="complete-token-generate" type="button">
+            Gerar token de chamada
+          </button>
+        </div>
+      </div>
+      <div class="complete-generated-token" id="complete-generated-token" hidden>
+        <span>Envie este codigo para o cliente:</span>
+        <strong id="complete-generated-code">---</strong>
+        <button class="btn-secondary" id="complete-copy-token" type="button">
+          Copiar
+        </button>
+      </div>
+      <div class="complete-admin-calls" id="complete-admin-calls">
+        Nenhuma chamada completa aguardando agora.
+      </div>
+    </section>
+
     <div class="virtual-room-workspace" id="room-workspace">
       <section class="virtual-room-grid" id="room-list"></section>
       <aside class="room-side-panel" id="room-side-panel" hidden></aside>
@@ -111,14 +141,50 @@
     </div>
   </div>
 
+  <div class="complete-admin-call-modal" id="complete-admin-call-modal" hidden>
+    <div class="complete-video-card">
+      <div class="complete-video-head">
+        <div>
+          <span class="call-modal-kicker">Chamada completa</span>
+          <h2 id="complete-admin-call-title">Atendimento</h2>
+          <p id="complete-admin-call-status">Aguardando conexao do cliente.</p>
+        </div>
+        <button
+          class="call-modal-close"
+          type="button"
+          aria-label="Encerrar chamada completa"
+          onclick="endAdminCompleteCall()"
+        >
+          x
+        </button>
+      </div>
+      <div class="complete-video-grid">
+        <div class="complete-video-box">
+          <video id="complete-admin-remote-video" autoplay playsinline></video>
+          <span>Cliente</span>
+        </div>
+        <div class="complete-video-box is-local">
+          <video id="complete-admin-local-video" autoplay muted playsinline></video>
+          <span>Amanda</span>
+        </div>
+      </div>
+      <div class="complete-video-actions">
+        <button class="btn-secondary" type="button" onclick="endAdminCompleteCall()">
+          Encerrar
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase-config.js?v=20260617-analytics"></script>
   <script src="auth.js?v=20260617-analytics"></script>
   <script src="https://8x8.vc/vpaas-magic-cookie-40aa8f8eaa4b44919530d6a192485f88/external_api.js"></script>
-  <script src="sala-virtual.js?v=20260625-sim-call-v24"></script>
-  <script src="pwa.js?v=20260625-sim-call-v24"></script>
+  <script src="sala-virtual.js?v=20260628-complete-call-v1"></script>
+  <script src="pwa.js?v=20260628-complete-call-v1"></script>
 </body>
 </html>
+
 
 
 
