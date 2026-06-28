@@ -1218,7 +1218,13 @@ async function answerCompleteAdminCall(sessionId) {
         atualizado_em: new Date().toISOString()
       })
       .eq('id', session.id);
-    setCompleteAdminCallStatus('Aguardando o cliente clicar em chamar...');
+
+    await sendCompleteAdminSignal('answer', {
+      control: 'accepted',
+      aceita_em: new Date().toISOString()
+    });
+
+    setCompleteAdminCallStatus('Amanda atendeu. Aguardando conexao do cliente...');
     const offer = await waitForCompleteOffer(session.id);
 
     if (!offer) {
