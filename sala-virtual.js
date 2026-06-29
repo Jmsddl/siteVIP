@@ -20,8 +20,8 @@ const COMPLETE_CALL_SESSIONS_TABLE = 'chamada_completa_sessoes';
 const COMPLETE_CALL_SIGNALS_TABLE = 'chamada_completa_sinais';
 const COMPLETE_CALL_REFRESH_MS = 2500;
 const COMPLETE_CALL_SIGNAL_POLL_MS = 1500;
-const COMPLETE_CALL_PRECONNECT_SECONDS = 4;
-const COMPLETE_CALL_PRECONNECT_SYNC_DELAY_MS = 2600;
+const COMPLETE_CALL_PRECONNECT_SECONDS = 9;
+const COMPLETE_CALL_PRECONNECT_SYNC_DELAY_MS = 6000;
 const COMPLETE_CALL_RTC_CONFIG = {
   iceCandidatePoolSize: 10,
   bundlePolicy: 'max-bundle',
@@ -109,6 +109,14 @@ function getRoomLoginUsername(row) {
   }
 
   return details.login_username || details.username || '';
+}
+
+function getRoomPlanLine(row) {
+  const loginUsername = getRoomLoginUsername(row);
+
+  return loginUsername
+    ? `${row?.plano || '-'} - login ${loginUsername}`
+    : (row?.plano || '-');
 }
 
 function getRoomDetails(row) {
@@ -718,7 +726,42 @@ async function waitUntilCompleteAdminTimestamp(timestamp) {
   await waitCompleteAdminDelay(Math.min(6000, target - Date.now()));
 }
 
-async function runCompleteAdminPreconnect(startAt = '') {
+function hideCompleteAdminPreconnectOverlay() {
+  const preconnect = document.getElementById('complete-admin-preconnect');
+
+  if (preconnect) {
+    preconnect.hidden = true;
+  }
+}
+
+function hideCompleteAdminPreconnectWhenVideoReady(video) {
+  let done = false;
+
+  const finish = () => {
+    if (done) {
+      return;
+    }
+
+    done = true;
+    hideCompleteAdminPreconnectOverlay();
+  };
+
+  if (!video) {
+    window.setTimeout(finish, 1800);
+    return;
+  }
+
+  if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 0) {
+    window.setTimeout(finish, 300);
+    return;
+  }
+
+  video.addEventListener('loadeddata', finish, { once: true });
+  video.addEventListener('canplay', finish, { once: true });
+  window.setTimeout(finish, 4200);
+}
+
+async function runCompleteAdminPreconnect(startAt = '', keepVisible = false) {
   const overlay = document.getElementById('complete-admin-preconnect');
   const count = document.getElementById('complete-admin-preconnect-count');
 
@@ -737,6 +780,13 @@ async function runCompleteAdminPreconnect(startAt = '') {
     await waitCompleteAdminDelay(1000);
   }
 
+  if (keepVisible) {
+    if (count) {
+      count.textContent = '...';
+    }
+    return;
+  }
+
   overlay.hidden = true;
 }
 
@@ -747,7 +797,7 @@ function ensureCompleteAdminPreconnect(startAt = '') {
 
   if (!completeAdminPreconnectPromise) {
     setCompleteAdminCallStatus('Trocando chaves criptograficas...');
-    completeAdminPreconnectPromise = runCompleteAdminPreconnect(startAt).finally(() => {
+    completeAdminPreconnectPromise = runCompleteAdminPreconnect(startAt, true).finally(() => {
       completeAdminPreconnectDone = true;
       completeAdminPreconnectPromise = null;
     });
@@ -883,11 +933,7 @@ function stopCompleteAdminStreams() {
 }
 
 function cleanupCompleteAdminCall() {
-  const preconnect = document.getElementById('complete-admin-preconnect');
-
-  if (preconnect) {
-    preconnect.hidden = true;
-  }
+  hideCompleteAdminPreconnectOverlay();
 
   completeAdminPreconnectPromise = null;
 
@@ -1217,6 +1263,7 @@ async function answerCompleteAdminCall(sessionId) {
       event.streams?.[0]?.getTracks?.().forEach((track) => {
         completeAdminRemoteStream.addTrack(track);
       });
+      hideCompleteAdminPreconnectWhenVideoReady(remoteVideo);
     };
 
     completeAdminPeer.onicecandidate = (event) => {
@@ -1229,6 +1276,7 @@ async function answerCompleteAdminCall(sessionId) {
       const state = completeAdminPeer?.connectionState;
 
       if (state === 'connected') {
+        hideCompleteAdminPreconnectWhenVideoReady(remoteVideo);
         setCompleteAdminCallStatus('Chamada conectada. Video ao vivo ativo.');
         startCompleteAdminClock();
         showCompleteAdminControlsTemporarily();
@@ -1549,13 +1597,10 @@ function renderRoomRows() {
   }
 
   container.innerHTML = roomRows.map((row) => {
-    const loginUsername = getRoomLoginUsername(row);
     const details = getRoomDetails(row);
     const phone = row.telefone || details.telefone || '';
     const rowId = escapeRoom(row.id);
-    const planLine = loginUsername
-      ? `${row.plano || '-'} - login ${loginUsername}`
-      : (row.plano || '-');
+    const planLine = getRoomPlanLine(row);
     const messages = roomMessagesById.get(row.id) || [];
     const unreadCount = countRoomUnreadMessages(row, messages);
     const isOpen = roomOpenChatId === row.id;
@@ -1643,16 +1688,13 @@ function renderRoomSidePanel() {
   const isInCall = row.status === 'em_chamada';
   const canOpenVideo = isReleased || isInCall;
   const canStartAdminCall = isWaiting || row.status === 'finalizado';
-  const loginUsername = getRoomLoginUsername(row);
   const rowId = escapeRoom(row.id);
-  const planLine = loginUsername
-    ? `${row.plano || '-'} - login ${loginUsername}`
-    : (row.plano || '-');
+  const planLine = getRoomPlanLine(row);
   const panelKey = JSON.stringify([
     row.id,
     row.username,
     row.plano,
-    loginUsername,
+    getRoomLoginUsername(row),
     row.status,
     row.meet_url,
     canOpenVideo,
@@ -1678,7 +1720,7 @@ function renderRoomSidePanel() {
       </button>
       <div>
         <strong>${escapeRoom(getRoomDisplayName(row))}</strong>
-        <span>${escapeRoom(planLine)}</span>
+        <span id="room-typing-status-${rowId}">${escapeRoom(planLine)}</span>
       </div>
       <b class="room-status-pill is-${escapeRoom(String(row.status || 'aguardando').replace(/[^a-z0-9_-]/gi, ''))}">
         ${escapeRoom(getRoomStatusLabel(row.status))}
@@ -1844,6 +1886,12 @@ function renderRoomChatMessages(chamadaId, messages) {
   const row = roomRows.find((item) => item.id === chamadaId);
   const roomDetails = getRoomDetails(row);
   const userTyping = roomDetails.usuario_typing === true && isRoomTypingRecent(roomDetails.usuario_typing_at);
+  const typingStatus = document.getElementById(`room-typing-status-${chamadaId}`);
+
+  if (typingStatus) {
+    typingStatus.textContent = userTyping ? 'Visitante está digitando...' : getRoomPlanLine(row);
+  }
+
   const renderKey = JSON.stringify(messages.map((message) => [
     message.id,
     message.autor_tipo,
@@ -1861,7 +1909,7 @@ function renderRoomChatMessages(chamadaId, messages) {
   roomChatRenderKeys.set(chamadaId, renderKey);
   roomChatMessageKeys.set(chamadaId, messageKey);
 
-  if (!messages.length && !userTyping) {
+  if (!messages.length) {
     container.innerHTML = '<span class="room-chat-empty">Nenhuma mensagem ainda.</span>';
     return;
   }
@@ -1889,11 +1937,7 @@ function renderRoomChatMessages(chamadaId, messages) {
     `;
   }).join('');
 
-  const typingHtml = userTyping
-    ? '<div class="room-chat-typing">Visitante esta digitando<span></span></div>'
-    : '';
-
-  container.innerHTML = messagesHtml + typingHtml;
+  container.innerHTML = messagesHtml;
 
   if (shouldScrollToLatest) {
     container.scrollTop = container.scrollHeight;

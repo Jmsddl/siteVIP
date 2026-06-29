@@ -129,8 +129,8 @@ const COMPLETE_CALL_TOKENS_TABLE = 'chamada_completa_tokens';
 const COMPLETE_CALL_SESSIONS_TABLE = 'chamada_completa_sessoes';
 const COMPLETE_CALL_SIGNALS_TABLE = 'chamada_completa_sinais';
 const COMPLETE_CALL_SIGNAL_POLL_MS = 1500;
-const COMPLETE_CALL_PRECONNECT_SECONDS = 4;
-const COMPLETE_CALL_PRECONNECT_SYNC_DELAY_MS = 2600;
+const COMPLETE_CALL_PRECONNECT_SECONDS = 9;
+const COMPLETE_CALL_PRECONNECT_SYNC_DELAY_MS = 6000;
 const COMPLETE_CALL_RINGING_MS = 3600;
 const COMPLETE_CALL_ANSWER_TIMEOUT_MS = 60000;
 const COMPLETE_CALL_RTC_CONFIG = {
@@ -179,6 +179,7 @@ let presencePollTimer = null;
 let previewChatLastRenderKey = '';
 let previewChatLastMessageKey = '';
 let previewTypingLastSentAt = 0;
+let previewAdminTypingActive = false;
 let previewCallClosingForBackground = false;
 let amandaPresenceOnline = false;
 let completeCallSession = null;
@@ -1014,12 +1015,43 @@ function stopCompleteVideoStreams() {
   });
 }
 
-function cleanupCompleteCallConnection() {
+function hideCompletePreconnectOverlay() {
   const preconnect = document.getElementById('complete-preconnect');
 
   if (preconnect) {
     preconnect.hidden = true;
   }
+}
+
+function hideCompletePreconnectWhenVideoReady(video) {
+  let done = false;
+
+  const finish = () => {
+    if (done) {
+      return;
+    }
+
+    done = true;
+    hideCompletePreconnectOverlay();
+  };
+
+  if (!video) {
+    window.setTimeout(finish, 1800);
+    return;
+  }
+
+  if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 0) {
+    window.setTimeout(finish, 300);
+    return;
+  }
+
+  video.addEventListener('loadeddata', finish, { once: true });
+  video.addEventListener('canplay', finish, { once: true });
+  window.setTimeout(finish, 4200);
+}
+
+function cleanupCompleteCallConnection() {
+  hideCompletePreconnectOverlay();
 
   clearCompleteCallAnswerTimer();
   stopCompleteCallSessionPolling();
@@ -1385,7 +1417,7 @@ async function prepareCompleteVideoConnection(acceptPayload = {}) {
       preconnect_start_at: preconnectStartAt
     });
     setCompleteVideoStatus('Trocando chaves criptograficas...');
-    await runCompletePreconnect(preconnectStartAt);
+    await runCompletePreconnect(preconnectStartAt, true);
 
     if (!completeCallSession || completeCallSession.id !== sessionId || completeCallEnding) {
       return;
@@ -1416,6 +1448,7 @@ async function prepareCompleteVideoConnection(acceptPayload = {}) {
       event.streams?.[0]?.getTracks?.().forEach((track) => {
         completeCallRemoteStream.addTrack(track);
       });
+      hideCompletePreconnectWhenVideoReady(remoteVideo);
     };
 
     completeCallPeer.onicecandidate = (event) => {
@@ -1430,6 +1463,7 @@ async function prepareCompleteVideoConnection(acceptPayload = {}) {
       if (state === 'connected') {
         completeCallConnected = true;
         clearCompleteCallAnswerTimer();
+        hideCompletePreconnectWhenVideoReady(remoteVideo);
         setCompleteVideoStatus('Chamada conectada. Video ao vivo ativo.');
         startCompleteCallClock();
         setCompleteCallStartedState(true);
@@ -1598,12 +1632,51 @@ function setPreviewCallMessage(title, message) {
   }
 }
 
-function setPreviewChatStatus(message) {
+function setPreviewChatStatus(message, force = false) {
   const messageEl = document.getElementById('preview-call-message');
+
+  if (previewAdminTypingActive && !force && message !== 'Amanda está digitando...') {
+    return;
+  }
 
   if (messageEl) {
     messageEl.textContent = message;
   }
+}
+
+function getPreviewDefaultStatusText(record = previewCallRecord) {
+  if (!record) {
+    return amandaPresenceOnline ? 'Amanda está online' : 'Amanda está offline';
+  }
+
+  if (record.status === 'finalizado') {
+    return 'Chamada prévia finalizada';
+  }
+
+  if (record.status === 'em_chamada') {
+    return 'Chamada de video em andamento';
+  }
+
+  if (record.status === 'chamando') {
+    return 'Chamando Amanda...';
+  }
+
+  if (record.status === 'liberado') {
+    return isPreviewIncomingAdminCall(record)
+      ? 'Amanda está te chamando agora'
+      : 'Amanda atendeu. Toque para entrar na chamada.';
+  }
+
+  if (record.status === 'cancelado') {
+    return 'Chamada indisponivel agora';
+  }
+
+  return amandaPresenceOnline ? 'Amanda está online' : 'Amanda está offline';
+}
+
+function setPreviewTypingStatus(isTyping) {
+  previewAdminTypingActive = Boolean(isTyping);
+  setPreviewChatStatus(isTyping ? 'Amanda está digitando...' : getPreviewDefaultStatusText(), true);
 }
 
 function setPreviewPresenceIndicator(isOnline) {
@@ -1975,7 +2048,7 @@ async function runCompleteRingingDelay() {
   await waitCompleteDelay(COMPLETE_CALL_RINGING_MS);
 }
 
-async function runCompletePreconnect(startAt = '') {
+async function runCompletePreconnect(startAt = '', keepVisible = false) {
   const overlay = document.getElementById('complete-preconnect');
   const count = document.getElementById('complete-preconnect-count');
 
@@ -1992,6 +2065,13 @@ async function runCompletePreconnect(startAt = '') {
     }
 
     await waitCompleteDelay(1000);
+  }
+
+  if (keepVisible) {
+    if (count) {
+      count.textContent = '...';
+    }
+    return;
   }
 
   overlay.hidden = true;
@@ -3277,6 +3357,7 @@ function renderPreviewChatMessages(messages) {
   const adminReadAtMs = getPreviewAdminReadAtMs();
   const previewDetails = getPreviewCallDetails(previewCallRecord);
   const adminTyping = previewDetails.admin_typing === true && isTypingRecent(previewDetails.admin_typing_at);
+  setPreviewTypingStatus(adminTyping);
   const messageKey = JSON.stringify(visibleMessages.map((message) => message.id || message.created_at || message.texto));
   const shouldScrollToLatest = messageKey !== previewChatLastMessageKey;
 
@@ -3300,7 +3381,7 @@ function renderPreviewChatMessages(messages) {
   previewChatLastRenderKey = renderKey;
   previewChatLastMessageKey = messageKey;
 
-  if (!visibleMessages.length && !adminTyping) {
+  if (!visibleMessages.length) {
     container.innerHTML = `
       <div class="telegram-empty">
         Mande uma mensagem para Amanda ou chame por chamada de vídeo.
@@ -3344,11 +3425,7 @@ function renderPreviewChatMessages(messages) {
     `;
   }).join('');
 
-  const typingHtml = adminTyping
-    ? '<div class="telegram-typing-indicator">Amanda esta digitando<span></span></div>'
-    : '';
-
-  container.innerHTML = messagesHtml + typingHtml;
+  container.innerHTML = messagesHtml;
 
   if (shouldScrollToLatest) {
     container.scrollTop = container.scrollHeight;
