@@ -1,6 +1,7 @@
 const ROOM_ADMIN_PLAN = 'admin';
 const ROOM_TABLE = 'chamadas_previas';
 const ROOM_MESSAGES_TABLE = 'chamada_mensagens';
+const ROOM_TYPING_TABLE = 'chamada_digitando';
 const JAAS_APP_ID = 'vpaas-magic-cookie-40aa8f8eaa4b44919530d6a192485f88';
 const JAAS_TOKEN_ENDPOINT = '/api/jaas-token';
 const ROOM_VIDEO_DOMAIN = '8x8.vc';
@@ -1858,25 +1859,27 @@ async function markRoomAdminTyping(id, isTyping = true) {
   }
 
   roomTypingLastSentById.set(id, nowMs);
-  const details = {
-    ...getRoomDetails(row),
-    admin_typing: Boolean(isTyping),
-    admin_typing_at: isTyping ? new Date(nowMs).toISOString() : ''
-  };
-
-  row.detalhes = details;
+  const nowIso = new Date(nowMs).toISOString();
 
   const { error } = await _supa
-    .from(ROOM_TABLE)
-    .update({ detalhes: details })
-    .eq('id', id);
+    .from(ROOM_TYPING_TABLE)
+    .upsert({
+      chamada_id: id,
+      lado: 'admin',
+      digitando: Boolean(isTyping),
+      atualizado_em: nowIso
+    }, { onConflict: 'chamada_id,lado' });
 
   if (error) {
     console.warn('Nao consegui atualizar digitando do admin:', error.message || error);
   }
 }
 
-function renderRoomChatMessages(chamadaId, messages) {
+function isRoomTypingStateActive(state) {
+  return state?.digitando === true && isRoomTypingRecent(state.atualizado_em);
+}
+
+function renderRoomChatMessages(chamadaId, messages, userTypingState = null) {
   const container = document.getElementById(`room-chat-${chamadaId}`);
 
   if (!container) {
@@ -1885,7 +1888,9 @@ function renderRoomChatMessages(chamadaId, messages) {
 
   const row = roomRows.find((item) => item.id === chamadaId);
   const roomDetails = getRoomDetails(row);
-  const userTyping = roomDetails.usuario_typing === true && isRoomTypingRecent(roomDetails.usuario_typing_at);
+  const userTyping = userTypingState
+    ? isRoomTypingStateActive(userTypingState)
+    : roomDetails.usuario_typing === true && isRoomTypingRecent(roomDetails.usuario_typing_at);
   const typingStatus = document.getElementById(`room-typing-status-${chamadaId}`);
 
   if (typingStatus) {
@@ -1953,16 +1958,30 @@ async function loadRoomMessagesForRows() {
   const newUserMessages = [];
 
   await Promise.all(roomRows.map(async (row) => {
-    const { data, error } = await _supa
-      .from(ROOM_MESSAGES_TABLE)
-      .select('*')
-      .eq('chamada_id', row.id)
-      .order('created_at', { ascending: true })
-      .limit(200);
+    const [messagesResult, typingResult] = await Promise.all([
+      _supa
+        .from(ROOM_MESSAGES_TABLE)
+        .select('*')
+        .eq('chamada_id', row.id)
+        .order('created_at', { ascending: true })
+        .limit(200),
+      _supa
+        .from(ROOM_TYPING_TABLE)
+        .select('digitando, atualizado_em')
+        .eq('chamada_id', row.id)
+        .eq('lado', 'usuario')
+        .maybeSingle()
+    ]);
+
+    const { data, error } = messagesResult;
 
     if (error) {
       console.warn('Nao consegui carregar mensagens:', error.message || error);
       return;
+    }
+
+    if (typingResult.error && typingResult.error.code !== 'PGRST116') {
+      console.warn('Nao consegui carregar digitacao do visitante:', typingResult.error.message || typingResult.error);
     }
 
     const messages = data || [];
@@ -1982,7 +2001,7 @@ async function loadRoomMessagesForRows() {
 
     const unreadCount = countRoomUnreadMessages(row, messages);
     updateRoomUnreadBadge(row, unreadCount);
-    renderRoomChatMessages(row.id, messages);
+    renderRoomChatMessages(row.id, messages, typingResult.data || null);
 
     if (row.id === roomOpenChatId && unreadCount > 0) {
       markRoomChatRead(row.id);

@@ -86,6 +86,7 @@ const VIP_CHECKOUT_OPTIONS = [
 ];
 const PREVIEW_CALL_TABLE = 'chamadas_previas';
 const PREVIEW_CALL_MESSAGES_TABLE = 'chamada_mensagens';
+const PREVIEW_TYPING_TABLE = 'chamada_digitando';
 const JAAS_APP_ID = 'vpaas-magic-cookie-40aa8f8eaa4b44919530d6a192485f88';
 const JAAS_TOKEN_ENDPOINT = '/api/jaas-token';
 const PREVIEW_CALL_VIDEO_DOMAIN = '8x8.vc';
@@ -2866,21 +2867,16 @@ async function setPreviewUserTyping(isTyping) {
   }
 
   previewTypingLastSentAt = nowMs;
-  const details = {
-    ...getPreviewCallDetails(previewCallRecord),
-    usuario_typing: Boolean(isTyping),
-    usuario_typing_at: isTyping ? new Date(nowMs).toISOString() : ''
-  };
-
-  previewCallRecord = {
-    ...previewCallRecord,
-    detalhes: details
-  };
+  const nowIso = new Date(nowMs).toISOString();
 
   const { error } = await _supa
-    .from(PREVIEW_CALL_TABLE)
-    .update({ detalhes: details })
-    .eq('id', previewCallRecord.id);
+    .from(PREVIEW_TYPING_TABLE)
+    .upsert({
+      chamada_id: previewCallRecord.id,
+      lado: 'usuario',
+      digitando: Boolean(isTyping),
+      atualizado_em: nowIso
+    }, { onConflict: 'chamada_id,lado' });
 
   if (error) {
     console.warn('Nao consegui atualizar digitando do usuario:', error.message || error);
@@ -3346,7 +3342,11 @@ async function markPreviewChatReadByUser(messages = []) {
   }
 }
 
-function renderPreviewChatMessages(messages) {
+function isPreviewTypingStateActive(state) {
+  return state?.digitando === true && isTypingRecent(state.atualizado_em);
+}
+
+function renderPreviewChatMessages(messages, adminTypingState = null) {
   const container = document.getElementById('preview-chat-messages');
 
   if (!container) {
@@ -3356,7 +3356,9 @@ function renderPreviewChatMessages(messages) {
   const visibleMessages = messages.filter(shouldShowPreviewSystemMessageToVisitor);
   const adminReadAtMs = getPreviewAdminReadAtMs();
   const previewDetails = getPreviewCallDetails(previewCallRecord);
-  const adminTyping = previewDetails.admin_typing === true && isTypingRecent(previewDetails.admin_typing_at);
+  const adminTyping = adminTypingState
+    ? isPreviewTypingStateActive(adminTypingState)
+    : previewDetails.admin_typing === true && isTypingRecent(previewDetails.admin_typing_at);
   setPreviewTypingStatus(adminTyping);
   const messageKey = JSON.stringify(visibleMessages.map((message) => message.id || message.created_at || message.texto));
   const shouldScrollToLatest = messageKey !== previewChatLastMessageKey;
@@ -3437,20 +3439,49 @@ async function loadPreviewChatMessages() {
     return;
   }
 
-  const { data, error } = await _supa
-    .from(PREVIEW_CALL_MESSAGES_TABLE)
-    .select('*')
-    .eq('chamada_id', previewCallRecord.id)
-    .order('created_at', { ascending: true })
-    .limit(200);
+  const callId = previewCallRecord.id;
+  const [messagesResult, callResult, typingResult] = await Promise.all([
+    _supa
+      .from(PREVIEW_CALL_MESSAGES_TABLE)
+      .select('*')
+      .eq('chamada_id', callId)
+      .order('created_at', { ascending: true })
+      .limit(200),
+    _supa
+      .from(PREVIEW_CALL_TABLE)
+      .select('id, status, detalhes, updated_at')
+      .eq('id', callId)
+      .maybeSingle(),
+    _supa
+      .from(PREVIEW_TYPING_TABLE)
+      .select('digitando, atualizado_em')
+      .eq('chamada_id', callId)
+      .eq('lado', 'admin')
+      .maybeSingle()
+  ]);
+
+  const { data, error } = messagesResult;
 
   if (error) {
     console.warn('Nao consegui carregar mensagens:', error.message || error);
     return;
   }
 
+  if (callResult.error) {
+    console.warn('Nao consegui carregar estado da chamada:', callResult.error.message || callResult.error);
+  } else if (callResult.data && previewCallRecord?.id === callId) {
+    previewCallRecord = {
+      ...previewCallRecord,
+      ...callResult.data
+    };
+  }
+
+  if (typingResult.error && typingResult.error.code !== 'PGRST116') {
+    console.warn('Nao consegui carregar estado de digitacao:', typingResult.error.message || typingResult.error);
+  }
+
   const messages = data || [];
-  renderPreviewChatMessages(messages);
+  renderPreviewChatMessages(messages, typingResult.data || null);
 
   const modal = document.getElementById('preview-call-modal');
 
