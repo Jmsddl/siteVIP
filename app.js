@@ -106,6 +106,8 @@ const PREVIEW_FORCE_FINISH_STORAGE_KEY = 'amanda_preview_force_finish_call';
 const PREVIEW_FINISHED_MESSAGE = 'Voce ja participou, agora pague a chamada completa.';
 const PREVIEW_CONNECT_DELAY_MS = 6000;
 const PREVIEW_VISITOR_SYSTEM_TTL_MS = 10000;
+const PREVIEW_TYPING_TTL_MS = 4500;
+const PREVIEW_TYPING_THROTTLE_MS = 1600;
 const PRESENCE_TABLE = 'sala_status';
 const PRESENCE_KEY = 'amanda';
 const PRESENCE_POLL_MS = 15000;
@@ -172,6 +174,7 @@ let previewChatOpenedAt = null;
 let presencePollTimer = null;
 let previewChatLastRenderKey = '';
 let previewChatLastMessageKey = '';
+let previewTypingLastSentAt = 0;
 let previewCallClosingForBackground = false;
 let amandaPresenceOnline = false;
 let completeCallSession = null;
@@ -194,6 +197,7 @@ let completeCallConnected = false;
 let completeCallMicHintShown = false;
 let completeCallAnswerTimer = null;
 let completeCallPreparing = false;
+let completeCallSessionPollTimer = null;
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -696,6 +700,13 @@ function clearCompleteCallAnswerTimer() {
   }
 }
 
+function stopCompleteCallSessionPolling() {
+  if (completeCallSessionPollTimer) {
+    window.clearInterval(completeCallSessionPollTimer);
+    completeCallSessionPollTimer = null;
+  }
+}
+
 function getCompleteCallFailureMessage(reason) {
   if (reason === 'recusada') {
     return 'Amanda recusou a chamada. Pergunte ela no chat e tente novamente com outro codigo.';
@@ -1007,6 +1018,7 @@ function cleanupCompleteCallConnection() {
   }
 
   clearCompleteCallAnswerTimer();
+  stopCompleteCallSessionPolling();
 
   if (completeCallSignalPollTimer) {
     window.clearInterval(completeCallSignalPollTimer);
@@ -1143,6 +1155,52 @@ async function pollCompleteCallSignals() {
   for (const signal of data || []) {
     await handleCompleteCallSignal(signal);
   }
+}
+
+async function pollCompleteCallSessionState() {
+  if (
+    !completeCallSession?.id ||
+    !completeCallStarted ||
+    completeCallConnected ||
+    completeCallPeer ||
+    typeof _supa === 'undefined' ||
+    !_supa
+  ) {
+    return;
+  }
+
+  const { data, error } = await _supa
+    .from(COMPLETE_CALL_SESSIONS_TABLE)
+    .select('id, status, admin_online')
+    .eq('id', completeCallSession.id)
+    .maybeSingle();
+
+  if (error) {
+    console.warn('Nao consegui conferir aceite da chamada completa:', error.message || error);
+    return;
+  }
+
+  if (!data) {
+    return;
+  }
+
+  if (data.status === 'cancelada' || data.status === 'finalizada') {
+    await finishCompleteCallBeforeAnswer('nao_atendeu');
+    return;
+  }
+
+  if (data.admin_online && data.status === 'chamando') {
+    clearCompleteCallAnswerTimer();
+    await prepareCompleteVideoConnection();
+  }
+}
+
+function startCompleteCallSessionPolling() {
+  stopCompleteCallSessionPolling();
+  completeCallSessionPollTimer = window.setInterval(
+    pollCompleteCallSessionState,
+    COMPLETE_CALL_SIGNAL_POLL_MS
+  );
 }
 
 function subscribeCompleteCallSignals() {
@@ -1301,6 +1359,7 @@ async function prepareCompleteVideoConnection() {
 
   try {
     completeCallPreparing = true;
+    stopCompleteCallSessionPolling();
     setCompleteCallRingingState(false);
 
     if (startButton) {
@@ -1428,6 +1487,7 @@ async function startCompleteVideoCall() {
     setCompleteCallRingingState(true);
     setCompleteVideoStatus('Chamando Amanda... Aguarde ela atender.');
     subscribeCompleteCallSignals();
+    startCompleteCallSessionPolling();
 
     await _supa
       .from(COMPLETE_CALL_SESSIONS_TABLE)
@@ -2684,6 +2744,48 @@ function getPreviewCallDetails(record) {
     : {};
 }
 
+function isTypingRecent(value) {
+  if (!value) {
+    return false;
+  }
+
+  const time = new Date(value).getTime();
+
+  return Number.isFinite(time) && Date.now() - time < PREVIEW_TYPING_TTL_MS;
+}
+
+async function markPreviewUserTyping() {
+  if (!previewCallRecord?.id || typeof _supa === 'undefined' || !_supa) {
+    return;
+  }
+
+  const nowMs = Date.now();
+
+  if (nowMs - previewTypingLastSentAt < PREVIEW_TYPING_THROTTLE_MS) {
+    return;
+  }
+
+  previewTypingLastSentAt = nowMs;
+  const details = {
+    ...getPreviewCallDetails(previewCallRecord),
+    usuario_typing_at: new Date(nowMs).toISOString()
+  };
+
+  previewCallRecord = {
+    ...previewCallRecord,
+    detalhes: details
+  };
+
+  const { error } = await _supa
+    .from(PREVIEW_CALL_TABLE)
+    .update({ detalhes: details })
+    .eq('id', previewCallRecord.id);
+
+  if (error) {
+    console.warn('Nao consegui atualizar digitando do usuario:', error.message || error);
+  }
+}
+
 function isPreviewIncomingAdminCall(record) {
   return (
     record?.status === 'liberado' &&
@@ -3079,6 +3181,7 @@ function renderPreviewChatMessages(messages) {
 
   const visibleMessages = messages.filter(shouldShowPreviewSystemMessageToVisitor);
   const adminReadAtMs = getPreviewAdminReadAtMs();
+  const adminTyping = isTypingRecent(getPreviewCallDetails(previewCallRecord).admin_typing_at);
   const messageKey = JSON.stringify(visibleMessages.map((message) => message.id || message.created_at || message.texto));
   const shouldScrollToLatest = messageKey !== previewChatLastMessageKey;
 
@@ -3093,7 +3196,7 @@ function renderPreviewChatMessages(messages) {
     message.autor_tipo,
     message.created_at,
     adminReadAtMs
-  ]));
+  ]).concat([adminTyping ? 'admin_typing' : '']));
 
   if (renderKey === previewChatLastRenderKey) {
     return;
@@ -3102,7 +3205,7 @@ function renderPreviewChatMessages(messages) {
   previewChatLastRenderKey = renderKey;
   previewChatLastMessageKey = messageKey;
 
-  if (!visibleMessages.length) {
+  if (!visibleMessages.length && !adminTyping) {
     container.innerHTML = `
       <div class="telegram-empty">
         Mande uma mensagem para Amanda ou chame por chamada de vídeo.
@@ -3111,7 +3214,7 @@ function renderPreviewChatMessages(messages) {
     return;
   }
 
-  container.innerHTML = visibleMessages.map((message) => {
+  const messagesHtml = visibleMessages.map((message) => {
     const mine = message.autor_tipo === 'usuario';
     const system = message.autor_tipo === 'sistema';
     const time = message.created_at
@@ -3145,6 +3248,12 @@ function renderPreviewChatMessages(messages) {
       </div>
     `;
   }).join('');
+
+  const typingHtml = adminTyping
+    ? '<div class="telegram-typing-indicator">Amanda esta digitando<span></span></div>'
+    : '';
+
+  container.innerHTML = messagesHtml + typingHtml;
 
   if (shouldScrollToLatest) {
     container.scrollTop = container.scrollHeight;
@@ -3902,6 +4011,10 @@ function setupCallHandlers() {
   }
 
   if (previewChatForm && previewChatInput) {
+    previewChatInput.addEventListener('input', () => {
+      markPreviewUserTyping();
+    });
+
     previewChatForm.addEventListener('submit', (event) => {
       event.preventDefault();
       const text = previewChatInput.value.trim();

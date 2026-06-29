@@ -13,6 +13,8 @@ const ROOM_PRESENCE_KEY = 'amanda';
 const ROOM_PRESENCE_HEARTBEAT_MS = 10000;
 const ROOM_MESSAGE_LIMIT = 1000;
 const ROOM_ORIGINAL_TITLE = document.title;
+const ROOM_TYPING_TTL_MS = 4500;
+const ROOM_TYPING_THROTTLE_MS = 1600;
 const COMPLETE_CALL_TOKENS_TABLE = 'chamada_completa_tokens';
 const COMPLETE_CALL_SESSIONS_TABLE = 'chamada_completa_sessoes';
 const COMPLETE_CALL_SIGNALS_TABLE = 'chamada_completa_sinais';
@@ -52,6 +54,7 @@ let roomMessagesById = new Map();
 let roomMarkingReadIds = new Set();
 let roomChatRenderKeys = new Map();
 let roomChatMessageKeys = new Map();
+let roomTypingLastSentById = new Map();
 let completeAdminCalls = [];
 let completeAdminTimer = null;
 let completeAdminPeer = null;
@@ -110,6 +113,16 @@ function getRoomDetails(row) {
   return row?.detalhes && typeof row.detalhes === 'object'
     ? row.detalhes
     : {};
+}
+
+function isRoomTypingRecent(value) {
+  if (!value) {
+    return false;
+  }
+
+  const time = new Date(value).getTime();
+
+  return Number.isFinite(time) && Date.now() - time < ROOM_TYPING_TTL_MS;
 }
 
 function getRoomDisplayName(row) {
@@ -654,7 +667,7 @@ async function loadCompleteAdminCalls() {
   const { data, error } = await _supa
     .from(COMPLETE_CALL_SESSIONS_TABLE)
     .select('*')
-    .in('status', ['aguardando', 'chamando', 'em_chamada'])
+    .in('status', ['chamando', 'em_chamada'])
     .order('criado_em', { ascending: false })
     .limit(20);
 
@@ -1699,6 +1712,7 @@ function renderRoomSidePanel() {
             maxlength="500"
             autocomplete="off"
             placeholder="Responder mensagem..."
+            oninput="markRoomAdminTyping('${rowId}')"
           />
           <button type="submit">Enviar</button>
         </form>
@@ -1755,6 +1769,42 @@ async function markRoomChatRead(id) {
   }
 }
 
+async function markRoomAdminTyping(id) {
+  if (!id || typeof _supa === 'undefined' || !_supa) {
+    return;
+  }
+
+  const nowMs = Date.now();
+  const lastSentAt = roomTypingLastSentById.get(id) || 0;
+
+  if (nowMs - lastSentAt < ROOM_TYPING_THROTTLE_MS) {
+    return;
+  }
+
+  const row = roomRows.find((item) => item.id === id);
+
+  if (!row) {
+    return;
+  }
+
+  roomTypingLastSentById.set(id, nowMs);
+  const details = {
+    ...getRoomDetails(row),
+    admin_typing_at: new Date(nowMs).toISOString()
+  };
+
+  row.detalhes = details;
+
+  const { error } = await _supa
+    .from(ROOM_TABLE)
+    .update({ detalhes: details })
+    .eq('id', id);
+
+  if (error) {
+    console.warn('Nao consegui atualizar digitando do admin:', error.message || error);
+  }
+}
+
 function renderRoomChatMessages(chamadaId, messages) {
   const container = document.getElementById(`room-chat-${chamadaId}`);
 
@@ -1762,12 +1812,14 @@ function renderRoomChatMessages(chamadaId, messages) {
     return;
   }
 
+  const row = roomRows.find((item) => item.id === chamadaId);
+  const userTyping = isRoomTypingRecent(getRoomDetails(row).usuario_typing_at);
   const renderKey = JSON.stringify(messages.map((message) => [
     message.id,
     message.autor_tipo,
     message.texto,
     message.created_at
-  ]));
+  ]).concat([userTyping ? 'user_typing' : '']));
   const messageKey = JSON.stringify(messages.map((message) => message.id || message.created_at || message.texto));
   const shouldScrollToLatest = messageKey !== roomChatMessageKeys.get(chamadaId);
   const isPlaceholder = container.textContent.trim().includes('Carregando conversa');
@@ -1779,12 +1831,12 @@ function renderRoomChatMessages(chamadaId, messages) {
   roomChatRenderKeys.set(chamadaId, renderKey);
   roomChatMessageKeys.set(chamadaId, messageKey);
 
-  if (!messages.length) {
+  if (!messages.length && !userTyping) {
     container.innerHTML = '<span class="room-chat-empty">Nenhuma mensagem ainda.</span>';
     return;
   }
 
-  container.innerHTML = messages.map((message) => {
+  const messagesHtml = messages.map((message) => {
     const mine = message.autor_tipo === 'admin';
     const system = message.autor_tipo === 'sistema';
     const time = message.created_at
@@ -1806,6 +1858,12 @@ function renderRoomChatMessages(chamadaId, messages) {
       </div>
     `;
   }).join('');
+
+  const typingHtml = userTyping
+    ? '<div class="room-chat-typing">Visitante esta digitando<span></span></div>'
+    : '';
+
+  container.innerHTML = messagesHtml + typingHtml;
 
   if (shouldScrollToLatest) {
     container.scrollTop = container.scrollHeight;
