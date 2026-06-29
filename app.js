@@ -2870,16 +2870,24 @@ async function setPreviewUserTyping(isTyping) {
   const nowIso = new Date(nowMs).toISOString();
 
   const { error } = await _supa
-    .from(PREVIEW_TYPING_TABLE)
-    .upsert({
-      chamada_id: previewCallRecord.id,
-      lado: 'usuario',
-      digitando: Boolean(isTyping),
-      atualizado_em: nowIso
-    }, { onConflict: 'chamada_id,lado' });
+    .from(PREVIEW_CALL_TABLE)
+    .update({
+      usuario_digitando: Boolean(isTyping),
+      usuario_digitando_em: isTyping ? nowIso : null,
+      updated_at: nowIso
+    })
+    .eq('id', previewCallRecord.id);
 
   if (error) {
     console.warn('Nao consegui atualizar digitando do usuario:', error.message || error);
+    await _supa
+      .from(PREVIEW_TYPING_TABLE)
+      .upsert({
+        chamada_id: previewCallRecord.id,
+        lado: 'usuario',
+        digitando: Boolean(isTyping),
+        atualizado_em: nowIso
+      }, { onConflict: 'chamada_id,lado' });
   }
 }
 
@@ -3356,9 +3364,15 @@ function renderPreviewChatMessages(messages, adminTypingState = null) {
   const visibleMessages = messages.filter(shouldShowPreviewSystemMessageToVisitor);
   const adminReadAtMs = getPreviewAdminReadAtMs();
   const previewDetails = getPreviewCallDetails(previewCallRecord);
-  const adminTyping = adminTypingState
-    ? isPreviewTypingStateActive(adminTypingState)
-    : previewDetails.admin_typing === true && isTypingRecent(previewDetails.admin_typing_at);
+  const adminTyping = (
+      isPreviewTypingStateActive(adminTypingState)
+    ) || (
+      previewCallRecord?.admin_digitando === true
+      && isTypingRecent(previewCallRecord.admin_digitando_em)
+    ) || (
+      previewDetails.admin_typing === true
+      && isTypingRecent(previewDetails.admin_typing_at)
+    );
   setPreviewTypingStatus(adminTyping);
   const messageKey = JSON.stringify(visibleMessages.map((message) => message.id || message.created_at || message.texto));
   const shouldScrollToLatest = messageKey !== previewChatLastMessageKey;
@@ -3449,7 +3463,7 @@ async function loadPreviewChatMessages() {
       .limit(200),
     _supa
       .from(PREVIEW_CALL_TABLE)
-      .select('id, status, detalhes, updated_at')
+      .select('id, status, detalhes, admin_digitando, admin_digitando_em, usuario_digitando, usuario_digitando_em, updated_at')
       .eq('id', callId)
       .maybeSingle(),
     _supa

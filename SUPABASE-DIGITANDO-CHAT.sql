@@ -3,6 +3,18 @@
 
 create extension if not exists pgcrypto;
 
+alter table public.chamadas_previas
+  add column if not exists usuario_digitando boolean not null default false,
+  add column if not exists usuario_digitando_em timestamptz,
+  add column if not exists admin_digitando boolean not null default false,
+  add column if not exists admin_digitando_em timestamptz;
+
+create index if not exists chamadas_previas_usuario_digitando_idx
+  on public.chamadas_previas (usuario_digitando, usuario_digitando_em desc);
+
+create index if not exists chamadas_previas_admin_digitando_idx
+  on public.chamadas_previas (admin_digitando, admin_digitando_em desc);
+
 create table if not exists public.chamada_digitando (
   chamada_id uuid not null references public.chamadas_previas(id) on delete cascade,
   lado text not null,

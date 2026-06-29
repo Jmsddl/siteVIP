@@ -1862,16 +1862,24 @@ async function markRoomAdminTyping(id, isTyping = true) {
   const nowIso = new Date(nowMs).toISOString();
 
   const { error } = await _supa
-    .from(ROOM_TYPING_TABLE)
-    .upsert({
-      chamada_id: id,
-      lado: 'admin',
-      digitando: Boolean(isTyping),
-      atualizado_em: nowIso
-    }, { onConflict: 'chamada_id,lado' });
+    .from(ROOM_TABLE)
+    .update({
+      admin_digitando: Boolean(isTyping),
+      admin_digitando_em: isTyping ? nowIso : null,
+      updated_at: nowIso
+    })
+    .eq('id', id);
 
   if (error) {
     console.warn('Nao consegui atualizar digitando do admin:', error.message || error);
+    await _supa
+      .from(ROOM_TYPING_TABLE)
+      .upsert({
+        chamada_id: id,
+        lado: 'admin',
+        digitando: Boolean(isTyping),
+        atualizado_em: nowIso
+      }, { onConflict: 'chamada_id,lado' });
   }
 }
 
@@ -1888,9 +1896,15 @@ function renderRoomChatMessages(chamadaId, messages, userTypingState = null) {
 
   const row = roomRows.find((item) => item.id === chamadaId);
   const roomDetails = getRoomDetails(row);
-  const userTyping = userTypingState
-    ? isRoomTypingStateActive(userTypingState)
-    : roomDetails.usuario_typing === true && isRoomTypingRecent(roomDetails.usuario_typing_at);
+  const userTyping = (
+      isRoomTypingStateActive(userTypingState)
+    ) || (
+      row?.usuario_digitando === true
+      && isRoomTypingRecent(row.usuario_digitando_em)
+    ) || (
+      roomDetails.usuario_typing === true
+      && isRoomTypingRecent(roomDetails.usuario_typing_at)
+    );
   const typingStatus = document.getElementById(`room-typing-status-${chamadaId}`);
 
   if (typingStatus) {
