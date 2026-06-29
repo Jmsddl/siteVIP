@@ -131,6 +131,7 @@ body.standalone-player-page {
 }
 
 .btn-call-action {
+  position: relative;
   border: 1px solid rgba(233, 30, 140, 0.45);
   border-radius: 999px;
   padding: 9px 13px;
@@ -140,6 +141,29 @@ body.standalone-player-page {
   font-weight: 800;
   cursor: pointer;
   transition: transform 0.16s, border-color 0.2s, background 0.2s;
+}
+
+.preview-unread-badge {
+  position: absolute;
+  top: -7px;
+  right: -5px;
+  min-width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  border: 2px solid #09090a;
+  border-radius: 999px;
+  padding: 0 5px;
+  color: #fff;
+  background: linear-gradient(135deg, #ff315f, #f00035);
+  box-shadow: 0 8px 18px rgba(240, 0, 53, 0.34);
+  font-size: 0.68rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.preview-unread-badge[hidden] {
+  display: none !important;
 }
 
 .btn-call-action:hover {

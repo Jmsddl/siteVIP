@@ -90,8 +90,8 @@ const JAAS_APP_ID = 'vpaas-magic-cookie-40aa8f8eaa4b44919530d6a192485f88';
 const JAAS_TOKEN_ENDPOINT = '/api/jaas-token';
 const PREVIEW_CALL_VIDEO_DOMAIN = '8x8.vc';
 const PREVIEW_CALL_VIDEO_BASE_URL = `https://${PREVIEW_CALL_VIDEO_DOMAIN}/${JAAS_APP_ID}`;
-const PREVIEW_CALL_POLL_MS = 2000;
-const PREVIEW_CHAT_POLL_MS = 3000;
+const PREVIEW_CALL_POLL_MS = 1200;
+const PREVIEW_CHAT_POLL_MS = 1200;
 const PREVIEW_CALL_RING_TIMEOUT_MS = 45000;
 const PREVIEW_SIMULATED_RING_MS = 5600;
 const PREVIEW_SIMULATED_CALL_DEFAULT_SECONDS = 18;
@@ -106,8 +106,9 @@ const PREVIEW_FORCE_FINISH_STORAGE_KEY = 'amanda_preview_force_finish_call';
 const PREVIEW_FINISHED_MESSAGE = 'Voce ja participou, agora pague a chamada completa.';
 const PREVIEW_CONNECT_DELAY_MS = 6000;
 const PREVIEW_VISITOR_SYSTEM_TTL_MS = 10000;
-const PREVIEW_TYPING_TTL_MS = 4500;
+const PREVIEW_TYPING_TTL_MS = 20000;
 const PREVIEW_TYPING_THROTTLE_MS = 1600;
+const PREVIEW_UNREAD_POLL_MS = 5000;
 const PRESENCE_TABLE = 'sala_status';
 const PRESENCE_KEY = 'amanda';
 const PRESENCE_POLL_MS = 15000;
@@ -129,6 +130,7 @@ const COMPLETE_CALL_SESSIONS_TABLE = 'chamada_completa_sessoes';
 const COMPLETE_CALL_SIGNALS_TABLE = 'chamada_completa_sinais';
 const COMPLETE_CALL_SIGNAL_POLL_MS = 1500;
 const COMPLETE_CALL_PRECONNECT_SECONDS = 4;
+const COMPLETE_CALL_PRECONNECT_SYNC_DELAY_MS = 2600;
 const COMPLETE_CALL_RINGING_MS = 3600;
 const COMPLETE_CALL_ANSWER_TIMEOUT_MS = 60000;
 const COMPLETE_CALL_RTC_CONFIG = {
@@ -152,6 +154,8 @@ let previewCallRecord = null;
 let previewCallPollTimer = null;
 let previewCallTimer = null;
 let previewChatPollTimer = null;
+let previewUnreadPollTimer = null;
+let previewUnreadChecking = false;
 let previewCallRingTimer = null;
 let previewIncomingPollTimer = null;
 let previewSimulatedFinishTimer = null;
@@ -985,7 +989,7 @@ function openCompleteVideoModal(session) {
     startButton.textContent = 'Ligar agora por vídeo';
   }
 
-  setCompleteVideoStatus('Clique em ligar para iniciar a transmissão de vídeo.');
+  setCompleteVideoStatus('Clique em ligar para iniciar a chamada de video com Amanda.');
   resetCompleteCallClock();
   setCompleteCallStartedState(false);
   updateCompleteCallControls();
@@ -1101,7 +1105,7 @@ async function handleCompleteCallSignal(signal) {
 
   if (signal.payload?.control === 'accepted') {
     clearCompleteCallAnswerTimer();
-    await prepareCompleteVideoConnection();
+    await prepareCompleteVideoConnection(signal.payload);
     return;
   }
 
@@ -1191,7 +1195,9 @@ async function pollCompleteCallSessionState() {
 
   if (data.admin_online && data.status === 'chamando') {
     clearCompleteCallAnswerTimer();
-    await prepareCompleteVideoConnection();
+    await prepareCompleteVideoConnection({
+      preconnect_start_at: new Date(Date.now() + 800).toISOString()
+    });
   }
 }
 
@@ -1346,7 +1352,7 @@ async function validateCompleteCallToken(code) {
   });
 }
 
-async function prepareCompleteVideoConnection() {
+async function prepareCompleteVideoConnection(acceptPayload = {}) {
   const startButton = document.getElementById('complete-start-call');
   const localVideo = document.getElementById('complete-local-video');
   const remoteVideo = document.getElementById('complete-remote-video');
@@ -1369,14 +1375,17 @@ async function prepareCompleteVideoConnection() {
 
     setCompleteCallStartedState(true);
     updateCompleteCallControls();
+    const preconnectStartAt = acceptPayload?.preconnect_start_at || '';
+
     setCompleteVideoStatus('Amanda atendeu. Preparando chamada...');
     await sendCompleteCallSignal('ice', {
       control: 'preconnect',
       started_at: new Date().toISOString(),
-      seconds: COMPLETE_CALL_PRECONNECT_SECONDS
+      seconds: COMPLETE_CALL_PRECONNECT_SECONDS,
+      preconnect_start_at: preconnectStartAt
     });
     setCompleteVideoStatus('Trocando chaves criptograficas...');
-    await runCompletePreconnect();
+    await runCompletePreconnect(preconnectStartAt);
 
     if (!completeCallSession || completeCallSession.id !== sessionId || completeCallEnding) {
       return;
@@ -1944,6 +1953,16 @@ function waitCompleteDelay(ms) {
   });
 }
 
+async function waitUntilCompleteTimestamp(timestamp) {
+  const target = timestamp ? new Date(timestamp).getTime() : 0;
+
+  if (!Number.isFinite(target) || target <= Date.now()) {
+    return;
+  }
+
+  await waitCompleteDelay(Math.min(6000, target - Date.now()));
+}
+
 async function runCompleteRingingDelay() {
   const startButton = document.getElementById('complete-start-call');
 
@@ -1956,7 +1975,7 @@ async function runCompleteRingingDelay() {
   await waitCompleteDelay(COMPLETE_CALL_RINGING_MS);
 }
 
-async function runCompletePreconnect() {
+async function runCompletePreconnect(startAt = '') {
   const overlay = document.getElementById('complete-preconnect');
   const count = document.getElementById('complete-preconnect-count');
 
@@ -1964,6 +1983,7 @@ async function runCompletePreconnect() {
     return;
   }
 
+  await waitUntilCompleteTimestamp(startAt);
   overlay.hidden = false;
 
   for (let value = COMPLETE_CALL_PRECONNECT_SECONDS; value >= 1; value -= 1) {
@@ -2754,21 +2774,22 @@ function isTypingRecent(value) {
   return Number.isFinite(time) && Date.now() - time < PREVIEW_TYPING_TTL_MS;
 }
 
-async function markPreviewUserTyping() {
+async function setPreviewUserTyping(isTyping) {
   if (!previewCallRecord?.id || typeof _supa === 'undefined' || !_supa) {
     return;
   }
 
   const nowMs = Date.now();
 
-  if (nowMs - previewTypingLastSentAt < PREVIEW_TYPING_THROTTLE_MS) {
+  if (isTyping && nowMs - previewTypingLastSentAt < PREVIEW_TYPING_THROTTLE_MS) {
     return;
   }
 
   previewTypingLastSentAt = nowMs;
   const details = {
     ...getPreviewCallDetails(previewCallRecord),
-    usuario_typing_at: new Date(nowMs).toISOString()
+    usuario_typing: Boolean(isTyping),
+    usuario_typing_at: isTyping ? new Date(nowMs).toISOString() : ''
   };
 
   previewCallRecord = {
@@ -2784,6 +2805,14 @@ async function markPreviewUserTyping() {
   if (error) {
     console.warn('Nao consegui atualizar digitando do usuario:', error.message || error);
   }
+}
+
+function markPreviewUserTyping() {
+  setPreviewUserTyping(true);
+}
+
+function stopPreviewUserTyping() {
+  setPreviewUserTyping(false);
 }
 
 function isPreviewIncomingAdminCall(record) {
@@ -3172,6 +3201,71 @@ function getPreviewAdminReadAtMs() {
   return Number.isNaN(time) ? 0 : time;
 }
 
+function getPreviewUserReadAtMs(record = previewCallRecord) {
+  const readAt = getPreviewCallDetails(record).usuario_read_at;
+  const time = readAt ? new Date(readAt).getTime() : 0;
+
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function countPreviewUnreadAdminMessages(messages = [], record = previewCallRecord) {
+  const readAtMs = getPreviewUserReadAtMs(record);
+
+  return messages.filter((message) => {
+    if (message.autor_tipo !== 'admin' || !message.created_at) {
+      return false;
+    }
+
+    const createdAtMs = new Date(message.created_at).getTime();
+
+    return !Number.isNaN(createdAtMs) && (!readAtMs || createdAtMs > readAtMs);
+  }).length;
+}
+
+function setPreviewUnreadBadge(count) {
+  const badge = document.getElementById('preview-chat-unread-badge');
+
+  if (!badge) {
+    return;
+  }
+
+  const safeCount = Math.max(0, Number(count) || 0);
+  badge.hidden = safeCount <= 0;
+  badge.textContent = safeCount > 99 ? '99+' : String(safeCount);
+}
+
+async function markPreviewChatReadByUser(messages = []) {
+  if (!previewCallRecord?.id || typeof _supa === 'undefined' || !_supa) {
+    return;
+  }
+
+  if (!countPreviewUnreadAdminMessages(messages, previewCallRecord)) {
+    setPreviewUnreadBadge(0);
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const details = {
+    ...getPreviewCallDetails(previewCallRecord),
+    usuario_read_at: now
+  };
+
+  previewCallRecord = {
+    ...previewCallRecord,
+    detalhes: details
+  };
+  setPreviewUnreadBadge(0);
+
+  const { error } = await _supa
+    .from(PREVIEW_CALL_TABLE)
+    .update({ detalhes: details })
+    .eq('id', previewCallRecord.id);
+
+  if (error) {
+    console.warn('Nao consegui marcar mensagens como lidas:', error.message || error);
+  }
+}
+
 function renderPreviewChatMessages(messages) {
   const container = document.getElementById('preview-chat-messages');
 
@@ -3181,7 +3275,8 @@ function renderPreviewChatMessages(messages) {
 
   const visibleMessages = messages.filter(shouldShowPreviewSystemMessageToVisitor);
   const adminReadAtMs = getPreviewAdminReadAtMs();
-  const adminTyping = isTypingRecent(getPreviewCallDetails(previewCallRecord).admin_typing_at);
+  const previewDetails = getPreviewCallDetails(previewCallRecord);
+  const adminTyping = previewDetails.admin_typing === true && isTypingRecent(previewDetails.admin_typing_at);
   const messageKey = JSON.stringify(visibleMessages.map((message) => message.id || message.created_at || message.texto));
   const shouldScrollToLatest = messageKey !== previewChatLastMessageKey;
 
@@ -3277,7 +3372,14 @@ async function loadPreviewChatMessages() {
     return;
   }
 
-  renderPreviewChatMessages(data || []);
+  const messages = data || [];
+  renderPreviewChatMessages(messages);
+
+  const modal = document.getElementById('preview-call-modal');
+
+  if (modal && !modal.hidden) {
+    markPreviewChatReadByUser(messages);
+  }
 }
 
 async function sendPreviewChatMessage(text, authorType = 'usuario') {
@@ -3763,6 +3865,57 @@ function startPreviewIncomingCallWatcher() {
   checkIncomingPreviewCallInBackground();
 }
 
+async function checkPreviewUnreadMessages() {
+  const modal = document.getElementById('preview-call-modal');
+
+  if (!modal || !modal.hidden || typeof _supa === 'undefined' || !_supa || isAdminUser() || previewUnreadChecking) {
+    return;
+  }
+
+  previewUnreadChecking = true;
+
+  try {
+    const ip = getPreviewCallIpKey(await getClientIp());
+    const activeCall = await getPreviewConversation(ip, true, getStoredPreviewPhone());
+
+    if (!activeCall?.id) {
+      setPreviewUnreadBadge(0);
+      return;
+    }
+
+    const { data, error } = await _supa
+      .from(PREVIEW_CALL_MESSAGES_TABLE)
+      .select('id, autor_tipo, created_at')
+      .eq('chamada_id', activeCall.id)
+      .eq('autor_tipo', 'admin')
+      .order('created_at', { ascending: true })
+      .limit(100);
+
+    if (error) {
+      console.warn('Nao consegui verificar mensagens nao lidas:', error.message || error);
+      return;
+    }
+
+    setPreviewUnreadBadge(countPreviewUnreadAdminMessages(data || [], activeCall));
+  } catch (error) {
+    console.warn('Nao consegui verificar mensagens nao lidas:', error.message || error);
+  } finally {
+    previewUnreadChecking = false;
+  }
+}
+
+function startPreviewUnreadWatcher() {
+  if (previewUnreadPollTimer || isAdminUser()) {
+    return;
+  }
+
+  previewUnreadPollTimer = window.setInterval(
+    checkPreviewUnreadMessages,
+    PREVIEW_UNREAD_POLL_MS
+  );
+  checkPreviewUnreadMessages();
+}
+
 async function openPreviewCallRoom() {
   const modal = document.getElementById('preview-call-modal');
 
@@ -4011,9 +4164,12 @@ function setupCallHandlers() {
   }
 
   if (previewChatForm && previewChatInput) {
+    previewChatInput.addEventListener('focus', markPreviewUserTyping);
+    previewChatInput.addEventListener('pointerdown', markPreviewUserTyping);
     previewChatInput.addEventListener('input', () => {
       markPreviewUserTyping();
     });
+    previewChatInput.addEventListener('blur', stopPreviewUserTyping);
 
     previewChatForm.addEventListener('submit', (event) => {
       event.preventDefault();
@@ -4024,6 +4180,7 @@ function setupCallHandlers() {
       }
 
       previewChatInput.value = '';
+      stopPreviewUserTyping();
       sendPreviewChatMessage(text);
     });
   }
@@ -5485,6 +5642,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupCallHandlers();
   startAmandaPresencePolling();
   startPreviewIncomingCallWatcher();
+  startPreviewUnreadWatcher();
 
   const commentText = document.getElementById('comment-text');
 

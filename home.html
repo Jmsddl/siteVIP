@@ -9,7 +9,7 @@
 
   <link rel="manifest" href="manifest.webmanifest"/>
   <link rel="apple-touch-icon" href="icon-192.png"/>
-<link rel="stylesheet" href="style.css?v=20260628-complete-call-v11"/>
+<link rel="stylesheet" href="style.css?v=20260628-complete-call-v12"/>
 
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
@@ -25,9 +25,11 @@
     <div class="navbar-call-actions">
       <button
         class="btn-call-action"
+        id="preview-call-open-button"
         type="button"
         onclick="openPreviewCallRoom()"
       >
+        <span class="preview-unread-badge" id="preview-chat-unread-badge" hidden>0</span>
         Fazer chamada prévia grátis
       </button>
       <button
@@ -480,7 +482,7 @@ Aqui eu sou completamente sua:
         <div>
           <span class="call-modal-kicker">Chamada completa</span>
           <h2 id="complete-video-title">Chamada liberada</h2>
-          <p id="complete-video-status">Clique em ligar para iniciar a transmissão de vídeo.</p>
+          <p id="complete-video-status">Clique em ligar para iniciar a chamada de video com Amanda.</p>
         </div>
         <button
           class="call-modal-close"
@@ -629,9 +631,9 @@ Aqui eu sou completamente sua:
 
   <script src="auth.js?v=20260617-analytics"></script>
 
-  <script src="app.js?v=20260628-complete-call-v11"></script>
+  <script src="app.js?v=20260628-complete-call-v12"></script>
 
-  <script src="pwa.js?v=20260628-complete-call-v11"></script>
+  <script src="pwa.js?v=20260628-complete-call-v12"></script>
 
 </body>
 </html>

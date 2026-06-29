@@ -5,7 +5,7 @@ const JAAS_APP_ID = 'vpaas-magic-cookie-40aa8f8eaa4b44919530d6a192485f88';
 const JAAS_TOKEN_ENDPOINT = '/api/jaas-token';
 const ROOM_VIDEO_DOMAIN = '8x8.vc';
 const ROOM_VIDEO_BASE_URL = `https://${ROOM_VIDEO_DOMAIN}/${JAAS_APP_ID}`;
-const ROOM_REFRESH_MS = 2500;
+const ROOM_REFRESH_MS = 1200;
 const ROOM_ACTIVE_STATUSES = ['aguardando', 'chamando', 'liberado', 'em_chamada', 'finalizado'];
 const ROOM_FINISHED_MESSAGE = 'Voce ja participou, agora pague a chamada completa.';
 const ROOM_PRESENCE_TABLE = 'sala_status';
@@ -13,7 +13,7 @@ const ROOM_PRESENCE_KEY = 'amanda';
 const ROOM_PRESENCE_HEARTBEAT_MS = 10000;
 const ROOM_MESSAGE_LIMIT = 1000;
 const ROOM_ORIGINAL_TITLE = document.title;
-const ROOM_TYPING_TTL_MS = 4500;
+const ROOM_TYPING_TTL_MS = 20000;
 const ROOM_TYPING_THROTTLE_MS = 1600;
 const COMPLETE_CALL_TOKENS_TABLE = 'chamada_completa_tokens';
 const COMPLETE_CALL_SESSIONS_TABLE = 'chamada_completa_sessoes';
@@ -21,6 +21,7 @@ const COMPLETE_CALL_SIGNALS_TABLE = 'chamada_completa_sinais';
 const COMPLETE_CALL_REFRESH_MS = 2500;
 const COMPLETE_CALL_SIGNAL_POLL_MS = 1500;
 const COMPLETE_CALL_PRECONNECT_SECONDS = 4;
+const COMPLETE_CALL_PRECONNECT_SYNC_DELAY_MS = 2600;
 const COMPLETE_CALL_RTC_CONFIG = {
   iceCandidatePoolSize: 10,
   bundlePolicy: 'max-bundle',
@@ -70,6 +71,7 @@ let completeAdminControlsTimer = null;
 let completeAdminClockTimer = null;
 let completeAdminAutoEndTimer = null;
 let completeAdminPreconnectPromise = null;
+let completeAdminPreconnectDone = false;
 
 function getRoomUser() {
   try {
@@ -706,7 +708,17 @@ function waitCompleteAdminDelay(ms) {
   });
 }
 
-async function runCompleteAdminPreconnect() {
+async function waitUntilCompleteAdminTimestamp(timestamp) {
+  const target = timestamp ? new Date(timestamp).getTime() : 0;
+
+  if (!Number.isFinite(target) || target <= Date.now()) {
+    return;
+  }
+
+  await waitCompleteAdminDelay(Math.min(6000, target - Date.now()));
+}
+
+async function runCompleteAdminPreconnect(startAt = '') {
   const overlay = document.getElementById('complete-admin-preconnect');
   const count = document.getElementById('complete-admin-preconnect-count');
 
@@ -714,6 +726,7 @@ async function runCompleteAdminPreconnect() {
     return;
   }
 
+  await waitUntilCompleteAdminTimestamp(startAt);
   overlay.hidden = false;
 
   for (let value = COMPLETE_CALL_PRECONNECT_SECONDS; value >= 1; value -= 1) {
@@ -727,10 +740,15 @@ async function runCompleteAdminPreconnect() {
   overlay.hidden = true;
 }
 
-function ensureCompleteAdminPreconnect() {
+function ensureCompleteAdminPreconnect(startAt = '') {
+  if (completeAdminPreconnectDone) {
+    return Promise.resolve();
+  }
+
   if (!completeAdminPreconnectPromise) {
     setCompleteAdminCallStatus('Trocando chaves criptograficas...');
-    completeAdminPreconnectPromise = runCompleteAdminPreconnect().finally(() => {
+    completeAdminPreconnectPromise = runCompleteAdminPreconnect(startAt).finally(() => {
+      completeAdminPreconnectDone = true;
       completeAdminPreconnectPromise = null;
     });
   }
@@ -896,6 +914,8 @@ function cleanupCompleteAdminCall() {
   }
 
   completeAdminPeer = null;
+  completeAdminPreconnectDone = false;
+  completeAdminPreconnectPromise = null;
   resetCompleteAdminClock();
   setCompleteAdminStartedState(false);
   stopCompleteAdminStreams();
@@ -987,7 +1007,7 @@ async function handleCompleteAdminSignal(signal) {
   }
 
   if (signal.payload?.control === 'preconnect') {
-    await ensureCompleteAdminPreconnect();
+    await ensureCompleteAdminPreconnect(signal.payload?.preconnect_start_at || '');
     return;
   }
 
@@ -1156,6 +1176,7 @@ async function answerCompleteAdminCall(sessionId) {
   completeAdminPendingIce = [];
   completeAdminEnding = false;
   completeAdminPreconnectPromise = null;
+  completeAdminPreconnectDone = false;
 
   if (modal) {
     modal.hidden = false;
@@ -1232,12 +1253,16 @@ async function answerCompleteAdminCall(sessionId) {
       })
       .eq('id', session.id);
 
+    const preconnectStartAt = new Date(Date.now() + COMPLETE_CALL_PRECONNECT_SYNC_DELAY_MS).toISOString();
+
     await sendCompleteAdminSignal('answer', {
       control: 'accepted',
-      aceita_em: new Date().toISOString()
+      aceita_em: new Date().toISOString(),
+      preconnect_start_at: preconnectStartAt
     });
 
     setCompleteAdminCallStatus('Amanda atendeu. Aguardando conexao do cliente...');
+    await ensureCompleteAdminPreconnect(preconnectStartAt);
     const offer = await waitForCompleteOffer(session.id);
 
     if (!offer) {
@@ -1713,6 +1738,9 @@ function renderRoomSidePanel() {
             autocomplete="off"
             placeholder="Responder mensagem..."
             oninput="markRoomAdminTyping('${rowId}')"
+            onfocus="markRoomAdminTyping('${rowId}')"
+            onpointerdown="markRoomAdminTyping('${rowId}')"
+            onblur="markRoomAdminTyping('${rowId}', false)"
           />
           <button type="submit">Enviar</button>
         </form>
@@ -1769,7 +1797,7 @@ async function markRoomChatRead(id) {
   }
 }
 
-async function markRoomAdminTyping(id) {
+async function markRoomAdminTyping(id, isTyping = true) {
   if (!id || typeof _supa === 'undefined' || !_supa) {
     return;
   }
@@ -1777,7 +1805,7 @@ async function markRoomAdminTyping(id) {
   const nowMs = Date.now();
   const lastSentAt = roomTypingLastSentById.get(id) || 0;
 
-  if (nowMs - lastSentAt < ROOM_TYPING_THROTTLE_MS) {
+  if (isTyping && nowMs - lastSentAt < ROOM_TYPING_THROTTLE_MS) {
     return;
   }
 
@@ -1790,7 +1818,8 @@ async function markRoomAdminTyping(id) {
   roomTypingLastSentById.set(id, nowMs);
   const details = {
     ...getRoomDetails(row),
-    admin_typing_at: new Date(nowMs).toISOString()
+    admin_typing: Boolean(isTyping),
+    admin_typing_at: isTyping ? new Date(nowMs).toISOString() : ''
   };
 
   row.detalhes = details;
@@ -1813,7 +1842,8 @@ function renderRoomChatMessages(chamadaId, messages) {
   }
 
   const row = roomRows.find((item) => item.id === chamadaId);
-  const userTyping = isRoomTypingRecent(getRoomDetails(row).usuario_typing_at);
+  const roomDetails = getRoomDetails(row);
+  const userTyping = roomDetails.usuario_typing === true && isRoomTypingRecent(roomDetails.usuario_typing_at);
   const renderKey = JSON.stringify(messages.map((message) => [
     message.id,
     message.autor_tipo,
@@ -2048,6 +2078,8 @@ async function sendRoomMessage(event, chamadaId) {
   if (input) {
     input.value = '';
   }
+
+  markRoomAdminTyping(chamadaId, false);
 
   const { error } = await _supa
     .from(ROOM_MESSAGES_TABLE)
