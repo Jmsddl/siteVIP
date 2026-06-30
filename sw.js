@@ -1,4 +1,4 @@
-const CACHE_NAME = 'amanda-vip-v20260629-typing-realtime-v16';
+const CACHE_NAME = 'amanda-vip-v20260629-typing-highlight-v17';
 const APP_SHELL = [
   './',
   './index.html',

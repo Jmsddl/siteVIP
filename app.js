@@ -1680,7 +1680,10 @@ function getPreviewDefaultStatusText(record = previewCallRecord) {
 }
 
 function setPreviewTypingStatus(isTyping) {
+  const messageEl = document.getElementById('preview-call-message');
+
   previewAdminTypingActive = Boolean(isTyping);
+  messageEl?.classList.toggle('is-typing', Boolean(isTyping));
   setPreviewChatStatus(isTyping ? 'Amanda está digitando...' : getPreviewDefaultStatusText(), true);
 }
 
