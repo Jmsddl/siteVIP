@@ -57,6 +57,10 @@ let roomMarkingReadIds = new Set();
 let roomChatRenderKeys = new Map();
 let roomChatMessageKeys = new Map();
 let roomTypingLastSentById = new Map();
+let roomTypingChannels = new Map();
+let roomTypingResetTimers = new Map();
+let roomTypingLiveUntilById = new Map();
+let roomTypingDelegationBound = false;
 let completeAdminCalls = [];
 let completeAdminTimer = null;
 let completeAdminPeer = null;
@@ -134,6 +138,151 @@ function isRoomTypingRecent(value) {
   const time = new Date(value).getTime();
 
   return Number.isFinite(time) && Date.now() - time < ROOM_TYPING_TTL_MS;
+}
+
+function getRoomTypingChannelName(id) {
+  return `chat-typing-${id}`;
+}
+
+function setRoomTypingStatus(id, isTyping) {
+  const row = roomRows.find((item) => item.id === id);
+  const typingStatus = document.getElementById(`room-typing-status-${id}`);
+  const listStatus = document.getElementById(`room-list-typing-${id}`);
+
+  if (typingStatus) {
+    typingStatus.textContent = isTyping ? 'Visitante está digitando...' : getRoomPlanLine(row);
+  }
+
+  if (listStatus) {
+    listStatus.hidden = !isTyping;
+  }
+}
+
+function clearRoomTypingResetTimer(id) {
+  const timer = roomTypingResetTimers.get(id);
+
+  if (timer) {
+    window.clearTimeout(timer);
+    roomTypingResetTimers.delete(id);
+  }
+}
+
+function scheduleRoomTypingReset(id) {
+  clearRoomTypingResetTimer(id);
+  roomTypingResetTimers.set(id, window.setTimeout(() => {
+    roomTypingResetTimers.delete(id);
+    setRoomTypingStatus(id, false);
+  }, 4200));
+}
+
+function handleRoomTypingBroadcast(id, payload = {}) {
+  if (payload.lado !== 'usuario') {
+    return;
+  }
+
+  const isTyping = payload.digitando === true;
+  roomTypingLiveUntilById.set(id, isTyping ? Date.now() + 4200 : 0);
+  setRoomTypingStatus(id, isTyping);
+
+  if (isTyping) {
+    scheduleRoomTypingReset(id);
+  } else {
+    clearRoomTypingResetTimer(id);
+  }
+}
+
+function ensureRoomTypingChannel(id) {
+  if (!id || typeof _supa === 'undefined' || !_supa) {
+    return null;
+  }
+
+  if (roomTypingChannels.has(id)) {
+    return roomTypingChannels.get(id);
+  }
+
+  const channel = _supa
+    .channel(getRoomTypingChannelName(id))
+    .on('broadcast', { event: 'typing' }, ({ payload }) => {
+      handleRoomTypingBroadcast(id, payload);
+    })
+    .subscribe();
+
+  roomTypingChannels.set(id, channel);
+  return channel;
+}
+
+function sendRoomTypingBroadcast(id, isTyping) {
+  const channel = ensureRoomTypingChannel(id);
+
+  if (!channel) {
+    return;
+  }
+
+  const payload = {
+    lado: 'admin',
+    digitando: Boolean(isTyping),
+    enviado_em: new Date().toISOString()
+  };
+
+  const send = () => {
+    try {
+      Promise.resolve(channel.send({
+        type: 'broadcast',
+        event: 'typing',
+        payload
+      })).catch((error) => {
+        console.warn('Nao consegui enviar digitacao admin em tempo real:', error);
+      });
+    } catch (error) {
+      console.warn('Nao consegui enviar digitacao admin em tempo real:', error);
+    }
+  };
+
+  send();
+
+  if (isTyping) {
+    window.setTimeout(send, 250);
+  }
+}
+
+function setupRoomTypingDelegation() {
+  if (roomTypingDelegationBound) {
+    return;
+  }
+
+  roomTypingDelegationBound = true;
+
+  document.addEventListener('focusin', (event) => {
+    const input = event.target?.closest?.('[data-room-chat-input]');
+
+    if (input?.dataset.roomChatInput) {
+      markRoomAdminTyping(input.dataset.roomChatInput, true);
+    }
+  });
+
+  document.addEventListener('input', (event) => {
+    const input = event.target?.closest?.('[data-room-chat-input]');
+
+    if (input?.dataset.roomChatInput) {
+      markRoomAdminTyping(input.dataset.roomChatInput, true);
+    }
+  });
+
+  document.addEventListener('pointerdown', (event) => {
+    const input = event.target?.closest?.('[data-room-chat-input]');
+
+    if (input?.dataset.roomChatInput) {
+      markRoomAdminTyping(input.dataset.roomChatInput, true);
+    }
+  });
+
+  document.addEventListener('focusout', (event) => {
+    const input = event.target?.closest?.('[data-room-chat-input]');
+
+    if (input?.dataset.roomChatInput) {
+      markRoomAdminTyping(input.dataset.roomChatInput, false);
+    }
+  });
 }
 
 function getRoomDisplayName(row) {
@@ -1597,6 +1746,8 @@ function renderRoomRows() {
     return;
   }
 
+  roomRows.forEach((row) => ensureRoomTypingChannel(row.id));
+
   container.innerHTML = roomRows.map((row) => {
     const details = getRoomDetails(row);
     const phone = row.telefone || details.telefone || '';
@@ -1619,6 +1770,9 @@ function renderRoomRows() {
             <div class="room-conversation-main">
               <strong>${escapeRoom(getRoomDisplayName(row))}</strong>
               <span>${escapeRoom(planLine)}</span>
+              <small class="room-typing-inline" id="room-list-typing-${rowId}" hidden>
+                Digitando...
+              </small>
             </div>
             <div class="room-conversation-side">
               <b class="room-status-pill is-${escapeRoom(statusClass)}">
@@ -1708,6 +1862,7 @@ function renderRoomSidePanel() {
 
   workspace?.classList.add('has-open-chat');
   panel.hidden = false;
+  ensureRoomTypingChannel(row.id);
 
   if (roomSidePanelRenderKey === panelKey && document.getElementById(`room-chat-${row.id}`)) {
     return;
@@ -1779,6 +1934,7 @@ function renderRoomSidePanel() {
             type="text"
             maxlength="500"
             autocomplete="off"
+            data-room-chat-input="${rowId}"
             placeholder="Responder mensagem..."
             oninput="markRoomAdminTyping('${rowId}')"
             onfocus="markRoomAdminTyping('${rowId}')"
@@ -1845,6 +2001,8 @@ async function markRoomAdminTyping(id, isTyping = true) {
     return;
   }
 
+  sendRoomTypingBroadcast(id, isTyping);
+
   const nowMs = Date.now();
   const lastSentAt = roomTypingLastSentById.get(id) || 0;
 
@@ -1897,6 +2055,8 @@ function renderRoomChatMessages(chamadaId, messages, userTypingState = null) {
   const row = roomRows.find((item) => item.id === chamadaId);
   const roomDetails = getRoomDetails(row);
   const userTyping = (
+      Date.now() < (roomTypingLiveUntilById.get(chamadaId) || 0)
+    ) || (
       isRoomTypingStateActive(userTypingState)
     ) || (
       row?.usuario_digitando === true
@@ -2370,6 +2530,7 @@ function setupVirtualRoom() {
   document.getElementById('room-clear-messages')?.addEventListener('click', clearRoomMessages);
   document.getElementById('complete-token-generate')?.addEventListener('click', generateCompleteCallToken);
   document.getElementById('complete-copy-token')?.addEventListener('click', copyCompleteToken);
+  setupRoomTypingDelegation();
   document.getElementById('room-answer-incoming')?.addEventListener('click', () => {
     if (roomIncomingCallId) {
       acceptIncomingCall(roomIncomingCallId);

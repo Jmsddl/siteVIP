@@ -181,6 +181,10 @@ let previewChatLastRenderKey = '';
 let previewChatLastMessageKey = '';
 let previewTypingLastSentAt = 0;
 let previewAdminTypingActive = false;
+let previewTypingChannel = null;
+let previewTypingChannelId = '';
+let previewTypingResetTimer = null;
+let previewAdminTypingLiveUntil = 0;
 let previewCallClosingForBackground = false;
 let amandaPresenceOnline = false;
 let completeCallSession = null;
@@ -1680,6 +1684,121 @@ function setPreviewTypingStatus(isTyping) {
   setPreviewChatStatus(isTyping ? 'Amanda está digitando...' : getPreviewDefaultStatusText(), true);
 }
 
+function clearPreviewTypingResetTimer() {
+  if (previewTypingResetTimer) {
+    window.clearTimeout(previewTypingResetTimer);
+    previewTypingResetTimer = null;
+  }
+}
+
+function schedulePreviewTypingReset() {
+  clearPreviewTypingResetTimer();
+  previewTypingResetTimer = window.setTimeout(() => {
+    previewTypingResetTimer = null;
+    setPreviewTypingStatus(false);
+  }, 4200);
+}
+
+function handlePreviewTypingBroadcast(payload = {}) {
+  if (payload.lado !== 'admin') {
+    return;
+  }
+
+  const isTyping = payload.digitando === true;
+  previewAdminTypingLiveUntil = isTyping ? Date.now() + 4200 : 0;
+  setPreviewTypingStatus(isTyping);
+
+  if (isTyping) {
+    schedulePreviewTypingReset();
+  } else {
+    clearPreviewTypingResetTimer();
+  }
+}
+
+function getPreviewTypingChannelName(id) {
+  return `chat-typing-${id}`;
+}
+
+function ensurePreviewTypingChannel() {
+  const id = previewCallRecord?.id;
+
+  if (!id || typeof _supa === 'undefined' || !_supa) {
+    return null;
+  }
+
+  if (previewTypingChannel && previewTypingChannelId === id) {
+    return previewTypingChannel;
+  }
+
+  if (previewTypingChannel) {
+    try {
+      _supa.removeChannel(previewTypingChannel);
+    } catch (error) {
+      console.warn('Nao consegui remover canal de digitacao:', error);
+    }
+  }
+
+  previewTypingChannelId = id;
+  previewTypingChannel = _supa
+    .channel(getPreviewTypingChannelName(id))
+    .on('broadcast', { event: 'typing' }, ({ payload }) => {
+      handlePreviewTypingBroadcast(payload);
+    })
+    .subscribe();
+
+  return previewTypingChannel;
+}
+
+function sendPreviewTypingBroadcast(isTyping) {
+  const channel = ensurePreviewTypingChannel();
+
+  if (!channel) {
+    return;
+  }
+
+  const payload = {
+    lado: 'usuario',
+    digitando: Boolean(isTyping),
+    enviado_em: new Date().toISOString()
+  };
+
+  const send = () => {
+    try {
+      Promise.resolve(channel.send({
+        type: 'broadcast',
+        event: 'typing',
+        payload
+      })).catch((error) => {
+        console.warn('Nao consegui enviar digitacao em tempo real:', error);
+      });
+    } catch (error) {
+      console.warn('Nao consegui enviar digitacao em tempo real:', error);
+    }
+  };
+
+  send();
+
+  if (isTyping) {
+    window.setTimeout(send, 250);
+  }
+}
+
+function cleanupPreviewTypingChannel() {
+  clearPreviewTypingResetTimer();
+
+  if (previewTypingChannel && typeof _supa !== 'undefined' && _supa) {
+    try {
+      _supa.removeChannel(previewTypingChannel);
+    } catch (error) {
+      console.warn('Nao consegui limpar canal de digitacao:', error);
+    }
+  }
+
+  previewTypingChannel = null;
+  previewTypingChannelId = '';
+  previewAdminTypingActive = false;
+}
+
 function setPreviewPresenceIndicator(isOnline) {
   const dot = document.getElementById('preview-presence-dot');
   const status = document.getElementById('preview-presence-text');
@@ -2860,6 +2979,8 @@ async function setPreviewUserTyping(isTyping) {
     return;
   }
 
+  sendPreviewTypingBroadcast(isTyping);
+
   const nowMs = Date.now();
 
   if (isTyping && nowMs - previewTypingLastSentAt < PREVIEW_TYPING_THROTTLE_MS) {
@@ -3365,6 +3486,8 @@ function renderPreviewChatMessages(messages, adminTypingState = null) {
   const adminReadAtMs = getPreviewAdminReadAtMs();
   const previewDetails = getPreviewCallDetails(previewCallRecord);
   const adminTyping = (
+      Date.now() < previewAdminTypingLiveUntil
+    ) || (
       isPreviewTypingStateActive(adminTypingState)
     ) || (
       previewCallRecord?.admin_digitando === true
@@ -4096,6 +4219,7 @@ async function openPreviewCallRoom() {
     }
 
     applyPreviewCallStatus(activeCall);
+    ensurePreviewTypingChannel();
     startPreviewCallPolling();
     startPreviewChatPolling();
   } catch (error) {
@@ -4120,6 +4244,8 @@ function closePreviewCallRoom() {
   setPreviewPhoneGateVisible(false);
   stopPreviewRinging();
   disposePreviewJitsi();
+  stopPreviewUserTyping();
+  cleanupPreviewTypingChannel();
 
   if (videoFrame) {
     videoFrame.innerHTML = '';

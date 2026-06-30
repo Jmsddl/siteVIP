@@ -3393,6 +3393,22 @@ select {
   font-size: 0.82rem;
 }
 
+.room-typing-inline {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 5px;
+  border-radius: 999px;
+  padding: 4px 9px;
+  color: #fff;
+  background: rgba(233, 30, 140, 0.28);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.room-typing-inline[hidden] {
+  display: none;
+}
+
 .room-status-pill {
   border-radius: 999px;
   padding: 7px 11px;
