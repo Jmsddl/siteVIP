@@ -134,6 +134,7 @@ const COMPLETE_CALL_PRECONNECT_SECONDS = 9;
 const COMPLETE_CALL_PRECONNECT_SYNC_DELAY_MS = 6000;
 const COMPLETE_CALL_RINGING_MS = 3600;
 const COMPLETE_CALL_ANSWER_TIMEOUT_MS = 60000;
+const COMPLETE_CALL_CLIPBOARD_KEY = 'amanda_last_complete_call_code';
 const COMPLETE_CALL_RTC_CONFIG = {
   iceCandidatePoolSize: 10,
   bundlePolicy: 'max-bundle',
@@ -519,7 +520,14 @@ function getFullCallOption(value) {
 }
 
 function normalizeCompleteCallCode(value) {
-  return String(value || '')
+  const text = String(value || '').trim().toUpperCase();
+  const embeddedCode = extractCompleteCallCode(text);
+
+  if (embeddedCode) {
+    return embeddedCode;
+  }
+
+  return text
     .trim()
     .toUpperCase()
     .replace(/\s+/g, '');
@@ -555,8 +563,18 @@ async function copyCompleteCodeFromChat(button) {
     return;
   }
 
+  const normalizedCode = normalizeCompleteCallCode(code);
+
+  if (normalizedCode) {
+    try {
+      window.localStorage?.setItem(COMPLETE_CALL_CLIPBOARD_KEY, normalizedCode);
+    } catch (storageError) {
+      console.warn('Nao consegui salvar codigo localmente:', storageError);
+    }
+  }
+
   try {
-    await copyTextToClipboard(code);
+    await copyTextToClipboard(normalizedCode || code);
     button.textContent = 'Copiado';
     button.classList.add('is-copied');
     window.setTimeout(() => {
@@ -587,9 +605,48 @@ function setCompleteTokenStatus(message, type = '') {
 
 async function pasteCompleteCallToken() {
   const input = document.getElementById('complete-token-input');
+  const pasteButton = document.getElementById('complete-token-paste');
 
   if (!input) {
     return;
+  }
+
+  const fillCode = (value, source = 'manual') => {
+    const normalizedCode = normalizeCompleteCallCode(value);
+
+    if (!normalizedCode) {
+      return '';
+    }
+
+    input.value = normalizedCode;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    setCompleteTokenStatus('Codigo colado. Agora toque em Liberar chamada.', 'ok');
+    input.focus();
+    input.select?.();
+    if (pasteButton) {
+      pasteButton.textContent = 'Colado';
+      window.setTimeout(() => {
+        if (pasteButton.isConnected) {
+          pasteButton.textContent = 'Colar codigo';
+        }
+      }, 1600);
+    }
+    trackEvent('colou_token_chamada_completa', {
+      alvo_tipo: 'chamada_completa',
+      alvo_titulo: normalizedCode,
+      alvo_origem: source
+    });
+    return normalizedCode;
+  };
+
+  try {
+    const savedCode = window.localStorage?.getItem(COMPLETE_CALL_CLIPBOARD_KEY);
+
+    if (fillCode(savedCode, 'chat')) {
+      return;
+    }
+  } catch (storageError) {
+    console.warn('Nao consegui ler codigo salvo localmente:', storageError);
   }
 
   try {
@@ -598,26 +655,15 @@ async function pasteCompleteCallToken() {
     }
 
     const clipboardText = await navigator.clipboard.readText();
-    const normalizedCode = normalizeCompleteCallCode(clipboardText);
 
-    if (!normalizedCode) {
+    if (!fillCode(clipboardText, 'clipboard')) {
       setCompleteTokenStatus('Nao encontrei um codigo copiado. Copie o codigo no chat e tente de novo.', 'error');
       input.focus();
       return;
     }
-
-    input.value = normalizedCode;
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    setCompleteTokenStatus('Codigo colado. Agora toque em Liberar chamada.', 'ok');
-    input.focus();
-    input.select?.();
-    trackEvent('colou_token_chamada_completa', {
-      alvo_tipo: 'chamada_completa',
-      alvo_titulo: normalizedCode
-    });
   } catch (error) {
     console.warn('Nao consegui colar codigo automaticamente:', error);
-    setCompleteTokenStatus('Nao consegui colar automatico. Toque no campo e cole o codigo.', 'error');
+    setCompleteTokenStatus('Toque no codigo dentro do chat em Copiar codigo e depois volte aqui em Colar codigo.', 'error');
     input.focus();
     input.select?.();
   }
