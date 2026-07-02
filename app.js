@@ -585,6 +585,44 @@ function setCompleteTokenStatus(message, type = '') {
   status.classList.toggle('is-ok', type === 'ok');
 }
 
+async function pasteCompleteCallToken() {
+  const input = document.getElementById('complete-token-input');
+
+  if (!input) {
+    return;
+  }
+
+  try {
+    if (!navigator.clipboard?.readText) {
+      throw new Error('clipboard_read_unavailable');
+    }
+
+    const clipboardText = await navigator.clipboard.readText();
+    const normalizedCode = normalizeCompleteCallCode(clipboardText);
+
+    if (!normalizedCode) {
+      setCompleteTokenStatus('Nao encontrei um codigo copiado. Copie o codigo no chat e tente de novo.', 'error');
+      input.focus();
+      return;
+    }
+
+    input.value = normalizedCode;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    setCompleteTokenStatus('Codigo colado. Agora toque em Liberar chamada.', 'ok');
+    input.focus();
+    input.select?.();
+    trackEvent('colou_token_chamada_completa', {
+      alvo_tipo: 'chamada_completa',
+      alvo_titulo: normalizedCode
+    });
+  } catch (error) {
+    console.warn('Nao consegui colar codigo automaticamente:', error);
+    setCompleteTokenStatus('Nao consegui colar automatico. Toque no campo e cole o codigo.', 'error');
+    input.focus();
+    input.select?.();
+  }
+}
+
 function setCompleteVideoStatus(message) {
   const status = document.getElementById('complete-video-status');
 
@@ -4380,6 +4418,7 @@ function setupCallHandlers() {
   const fullCheckout = document.getElementById('full-call-checkout');
   const completeTokenForm = document.getElementById('complete-token-form');
   const completeTokenInput = document.getElementById('complete-token-input');
+  const completeTokenPaste = document.getElementById('complete-token-paste');
   const completeStartButton = document.getElementById('complete-start-call');
   const completeFlipButton = document.querySelector('[data-complete-flip-camera]');
   const completeCameraButton = document.querySelector('[data-complete-toggle-camera]');
@@ -4484,6 +4523,8 @@ function setupCallHandlers() {
       setCompleteTokenStatus('');
     });
   }
+
+  completeTokenPaste?.addEventListener('click', pasteCompleteCallToken);
 
   if (completeStartButton) {
     completeStartButton.addEventListener('click', startCompleteVideoCall);
