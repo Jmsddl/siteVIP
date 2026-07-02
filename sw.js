@@ -1,4 +1,4 @@
-const CACHE_NAME = 'amanda-vip-v20260702-paste-token-local-v20';
+const CACHE_NAME = 'amanda-vip-v20260702-complete-mic-notice-v21';
 const APP_SHELL = [
   './',
   './index.html',

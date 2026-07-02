@@ -1568,6 +1568,23 @@ body.modal-open {
   background-repeat: no-repeat;
 }
 
+.complete-call-mic-notice {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  max-width: min(90%, 360px);
+  border-radius: 999px;
+  padding: 7px 13px;
+  color: rgba(255, 255, 255, 0.94);
+  background: rgba(0, 0, 0, 0.46);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
+  font-size: 0.86rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
 .complete-video-card.is-mic-hint-visible:not(.is-controls-hidden) [data-complete-toggle-mic] .sim-call-mic-hint {
   opacity: 1;
   transform: translate(-50%, 0) scale(1);
